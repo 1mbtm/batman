@@ -1,0 +1,35 @@
+{
+  "total": 4,
+  "services": [
+    {
+      "id": "technology-products",
+      "title": "Technology Products & Digital Solutions",
+      "category": "PRODUCT BUILDING",
+      "description": "Exploring ideas, experimenting with technology, and building practical software products and web applications."
+    },
+    {
+      "id": "offline-businesses",
+      "title": "Offline Business Ventures",
+      "category": "ENTREPRENEURSHIP",
+      "description": "Running and developing real-world offline business operations alongside software tools built to support them."
+    },
+    {
+      "id": "freelancing-websites",
+      "title": "Freelancing & Website Development",
+      "category": "CLIENT WORK",
+      "description": "Designing, developing, and selling custom websites tailored to clients and business needs."
+    },
+    {
+      "id": "systems-reverse-engineering",
+      "title": "Systems & Reverse Engineering",
+      "category": "EXPLORATION & ENGINEERING",
+      "description": "Understanding how systems work underneath by experimenting, breaking things down, and building practical solutions."
+    }
+  ],
+  "skills": {
+    "frontend": ["React", "JavaScript", "TypeScript", "HTML", "CSS"],
+    "backend": ["Node.js", "Firebase"],
+    "developmentAndInfrastructure": ["APIs", "Databases", "Git", "Cloudflare"],
+    "programming": ["Python"]
+  }
+}

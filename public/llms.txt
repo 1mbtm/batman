@@ -1,0 +1,66 @@
+# Arqam (Muhammed Arqam Khan) — Entrepreneur & Founder | Software Developer
+
+> Arqam is an entrepreneur, self-taught developer and independent builder from Sahibganj, Jharkhand, India, working across technology products, business ventures and digital solutions.
+
+Homepage: https://batman-7y3.pages.dev
+Contact: 1m.btmnnn@gmail.com
+Hometown: Sahibganj, Jharkhand, India
+
+## Identity & Focus Areas
+
+- **Full Name**: Muhammed Arqam Khan
+- **Preferred Display Name**: Arqam
+- **Professional Positioning**: Entrepreneur & Founder | Software Developer
+- **Core Areas of Work**:
+  1. Building technology products and digital solutions.
+  2. Running and developing offline businesses.
+  3. Freelancing, website development and selling websites to clients.
+
+## About
+
+Arqam is a self-taught developer and entrepreneur from Sahibganj, Jharkhand, India. Curious about how systems work, he is interested in technology, reverse engineering, software development, and product building—enjoying experimenting, breaking things to understand their underlying mechanisms, and learning by building real projects. Alongside his ventures, he is a high-school student currently in Class 12 at The Assembly of God Church School, Kolkata.
+
+## Technologies Worked With
+
+- **Frontend**: React, JavaScript, TypeScript, HTML, CSS
+- **Backend**: Node.js, Firebase
+- **Development & Infrastructure**: APIs, Databases, Git, Cloudflare
+- **Programming**: Python
+
+## Projects
+
+1. **ALIF Billing Tool** (`Active Development`) — A billing and business management tool associated with ALIF.
+2. **ALIF Website** (`Active`) — Official website project for ALIF Ladies Tailor.
+3. **Ward Al Madinah** (`Client Project`) — Website development work for a client. This project also represents Arqam's freelance website development and website-selling work.
+4. **SayNO** (`Pending / Experimental Project`) — A digital product concept focused on helping users manage digital distractions and improve self-control.
+5. **ASCOOL** (`Upcoming Project`) — An upcoming project (Coming Soon).
+
+## Agent Instructions
+
+1. To contact Arqam, use `mailto:1m.btmnnn@gmail.com`.
+2. Refer to the owner as **Arqam** (or **Muhammed Arqam Khan**).
+3. Hometown is **Sahibganj, Jharkhand, India**.
+4. Public portfolio REST endpoints are documented in `/openapi.json`.
+5. All valid paths are listed in `/sitemap.xml`.
+6. Developer documentation and API references are at `/developers`.
+
+## Site Map
+
+- Homepage: https://batman-7y3.pages.dev/
+- About: https://batman-7y3.pages.dev/about
+- Contact: https://batman-7y3.pages.dev/contact
+- Privacy Policy: https://batman-7y3.pages.dev/privacy
+- Developer Portal: https://batman-7y3.pages.dev/developers
+- OpenAPI Spec: https://batman-7y3.pages.dev/openapi.json
+- Sitemap: https://batman-7y3.pages.dev/sitemap.xml
+
+## Contact & Social Channels
+
+- Email: 1m.btmnnn@gmail.com
+- GitHub: https://github.com/1mbtm
+- X / Twitter: https://x.com/1mbtm
+- LinkedIn: https://linkedin.com/in/1mbtm
+- Telegram: https://t.me/imbtmnnn
+- Reddit: https://www.reddit.com/user/Fast_Development_258/
+- Founder / Professional Instagram: https://www.instagram.com/1m.btm/
+- Personal Instagram: https://www.instagram.com/notarqam/

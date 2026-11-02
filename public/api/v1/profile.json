@@ -1,0 +1,33 @@
+{
+  "name": "Muhammed Arqam Khan",
+  "preferredName": "Arqam",
+  "identity": "Arqam",
+  "alias": "1m.btm",
+  "role": "Entrepreneur & Founder | Software Developer",
+  "location": {
+    "hometown": "Sahibganj, Jharkhand, India"
+  },
+  "focusAreas": [
+    "Building technology products and digital solutions",
+    "Running and developing offline businesses",
+    "Freelancing, website development and selling websites to clients"
+  ],
+  "skills": {
+    "frontend": ["React", "JavaScript", "TypeScript", "HTML", "CSS"],
+    "backend": ["Node.js", "Firebase"],
+    "developmentAndInfrastructure": ["APIs", "Databases", "Git", "Cloudflare"],
+    "programming": ["Python"]
+  },
+  "summary": "Arqam is an entrepreneur, self-taught developer and independent builder working across technology products, business ventures and digital solutions.",
+  "links": {
+    "website": "https://batman-7y3.pages.dev",
+    "github": "https://github.com/1mbtm",
+    "x": "https://x.com/1mbtm",
+    "linkedin": "https://linkedin.com/in/1mbtm",
+    "telegram": "https://t.me/imbtmnnn",
+    "reddit": "https://www.reddit.com/user/Fast_Development_258/",
+    "instagramFounder": "https://www.instagram.com/1m.btm/",
+    "instagramPersonal": "https://www.instagram.com/notarqam/",
+    "contact": "mailto:1m.btmnnn@gmail.com"
+  }
+}

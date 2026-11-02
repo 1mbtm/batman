@@ -1,0 +1,9 @@
+{
+  "type": "https://batman-7y3.pages.dev/developers/errors#resource-not-found",
+  "title": "Resource Not Found",
+  "status": 404,
+  "detail": "The requested endpoint or resource was not found on this server. Refer to /openapi.json for all valid API routes.",
+  "instance": "/api",
+  "code": "RESOURCE_NOT_FOUND",
+  "resolution": "Verify the endpoint path against the OpenAPI 3.1 specification at https://batman-7y3.pages.dev/openapi.json or check developer documentation at https://batman-7y3.pages.dev/developers."
+}

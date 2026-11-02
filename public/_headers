@@ -1,0 +1,51 @@
+# Cloudflare Pages _headers Configuration
+# Docs: https://developers.cloudflare.com/pages/configuration/headers/
+
+# Root and all HTML routes — support content negotiation caching
+/*
+  Vary: Accept, Accept-Encoding
+  Access-Control-Allow-Origin: *
+
+# Markdown agent index (acceptmarkdown.com standard)
+/llms.txt
+  Content-Type: text/markdown; charset=utf-8
+  Vary: Accept, Accept-Encoding
+  Access-Control-Allow-Origin: *
+  Cache-Control: public, max-age=86400
+
+# 404 page body — raw markdown for AI agent recovery
+/404.html
+  Content-Type: text/markdown; charset=utf-8
+  Vary: Accept, Accept-Encoding
+  Access-Control-Allow-Origin: *
+  Cache-Control: no-store
+
+# OpenAPI 3.1 Specification with CORS and Vary
+/openapi.json
+  Content-Type: application/json; charset=utf-8
+  Access-Control-Allow-Origin: *
+  Access-Control-Allow-Methods: GET, OPTIONS
+  Vary: Accept, Accept-Encoding
+  Cache-Control: public, max-age=86400
+
+# REST API Endpoints — Rate Limiting & Deprecation headers
+/api/*
+  Content-Type: application/json; charset=utf-8
+  Access-Control-Allow-Origin: *
+  Access-Control-Allow-Methods: GET, OPTIONS
+  RateLimit-Limit: 100
+  RateLimit-Remaining: 99
+  RateLimit-Reset: 60
+  Vary: Accept, Accept-Encoding
+  Cache-Control: public, max-age=600
+
+# XML Sitemap
+/sitemap.xml
+  Content-Type: application/xml; charset=utf-8
+  Vary: Accept, Accept-Encoding
+  Cache-Control: public, max-age=86400
+
+# robots.txt
+/robots.txt
+  Content-Type: text/plain; charset=utf-8
+  Cache-Control: public, max-age=86400

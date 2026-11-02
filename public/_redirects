@@ -1,0 +1,20 @@
+# Known SPA & Static Trust-Anchor Paths
+/                 /index.html   200
+/about            /about/index.html   200
+/contact          /contact/index.html   200
+/privacy          /privacy/index.html   200
+/developers       /developers/index.html   200
+/google520104f5fdd4d922.html  /google520104f5fdd4d922.html  200
+
+# Versioned Public REST API Endpoints
+/api/v1/status    /api/v1/status.json   200
+/api/v1/profile   /api/v1/profile.json   200
+/api/v1/projects  /api/v1/projects.json  200
+/api/v1/services  /api/v1/services.json  200
+/api/v1/contact   /api/v1/contact.json   200
+
+# API catch-all: real HTTP 404 with RFC 9457 Problem JSON
+/api/*            /error.json   404
+
+# Catch-all: real HTTP 404 with markdown recovery body for unknown web paths
+/*                /404.html   404

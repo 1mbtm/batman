@@ -1,0 +1,130 @@
+@import url('https://fonts.googleapis.com/css2?family=Kanit:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800;0,900;1,300;1,400;1,500;1,600;1,700;1,800;1,900&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  background-color: #090909;
+  color: #f2f2f0;
+  font-family: 'Kanit', sans-serif;
+  overflow-x: clip;
+  min-height: 100vh;
+  -webkit-text-size-adjust: 100%;
+  -webkit-tap-highlight-color: transparent;
+}
+
+body {
+  background-color: #090909;
+  color: #f2f2f0;
+  overflow-x: clip;
+  min-height: 100vh;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-y: none;
+}
+
+/* High-Performance Hardware GPU Compositor Layers */
+.transform-gpu {
+  transform: translate3d(0, 0, 0);
+  -webkit-transform: translate3d(0, 0, 0);
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+  perspective: 1000px;
+  -webkit-perspective: 1000px;
+}
+
+.hero-heading {
+  background: linear-gradient(180deg, #b8b8b8 0%, #f2f2f0 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+/* Liquid Mirror-Finish Chrome / Molten Silver Metal Button */
+@keyframes liquidMercurySweep {
+  0% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0% 50%;
+  }
+}
+
+@keyframes mercuryReflect {
+  0% {
+    transform: translateX(-160%) skewX(-30deg);
+  }
+  40% {
+    transform: translateX(200%) skewX(-30deg);
+  }
+  100% {
+    transform: translateX(200%) skewX(-30deg);
+  }
+}
+
+.liquid-chrome-btn {
+  position: relative;
+  overflow: hidden;
+  background: linear-gradient(
+    135deg,
+    #d8d8d8 0%,
+    #ffffff 22%,
+    #8a8e96 45%,
+    #f0f2f5 55%,
+    #32353a 78%,
+    #e2e4e8 100%
+  );
+  background-size: 200% 200%;
+  animation: liquidMercurySweep 6s ease infinite;
+  color: #050505;
+  font-weight: 700;
+  border: 1px solid rgba(255, 255, 255, 0.9);
+  box-shadow:
+    0 10px 30px -5px rgba(255, 255, 255, 0.35),
+    0 4px 18px rgba(0, 0, 0, 0.8),
+    inset 0 2px 2px rgba(255, 255, 255, 0.95),
+    inset 0 -3px 6px rgba(0, 0, 0, 0.5),
+    inset 0 0 10px rgba(255, 255, 255, 0.8);
+  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  will-change: transform;
+}
+
+@media (hover: hover) {
+  .liquid-chrome-btn:hover {
+    transform: scale(1.06);
+    box-shadow:
+      0 14px 40px -2px rgba(255, 255, 255, 0.5),
+      0 6px 24px rgba(0, 0, 0, 0.9),
+      inset 0 3px 4px rgba(255, 255, 255, 1),
+      inset 0 -3px 8px rgba(0, 0, 0, 0.6),
+      inset 0 0 15px rgba(255, 255, 255, 0.9);
+  }
+}
+
+.liquid-chrome-btn::after {
+  content: '';
+  position: absolute;
+  top: -40%;
+  left: 0;
+  width: 50%;
+  height: 180%;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(255, 255, 255, 0.2) 20%,
+    rgba(255, 255, 255, 0.9) 50%,
+    rgba(255, 255, 255, 0.2) 80%,
+    transparent 100%
+  );
+  transform: translateX(-160%) skewX(-30deg);
+  animation: mercuryReflect 2.4s ease-in-out infinite;
+  pointer-events: none;
+}

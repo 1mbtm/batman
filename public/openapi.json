@@ -1,0 +1,376 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Arqam — Public Portfolio API & Developer Specification",
+    "description": "Official public REST API surface and developer resources for the personal and professional portfolio of Muhammed Arqam Khan (Arqam) — Entrepreneur & Founder | Software Developer from Sahibganj, Jharkhand, India.\n\n### ⚡ REST Versioning & Deprecation Policy\n- **Versioning Scheme**: URL path versioning (`/api/v1/`).\n- **Deprecation Policy**: Any endpoint scheduled for retirement will return standard RFC 8594 `Deprecation: true` and `Sunset: <HTTP-date>` headers at least 6 months prior to removal.\n- **Error Model**: All errors conform to RFC 9457 `application/problem+json` format.\n- **Content Negotiation**: Supports `Accept: text/markdown` (via acceptmarkdown.com standard) and `Accept: application/json`.",
+    "version": "1.0.0",
+    "x-deprecation-policy": {
+      "policy": "RFC 8594 Deprecation and Sunset headers with 6 months notice",
+      "documentationUrl": "https://batman-7y3.pages.dev/developers#deprecation"
+    },
+    "contact": {
+      "name": "Muhammed Arqam Khan (Arqam)",
+      "email": "1m.btmnnn@gmail.com",
+      "url": "https://batman-7y3.pages.dev/contact"
+    },
+    "license": {
+      "name": "MIT License",
+      "url": "https://batman-7y3.pages.dev/privacy"
+    }
+  },
+  "servers": [
+    {
+      "url": "https://batman-7y3.pages.dev",
+      "description": "Production Edge Server (Cloudflare Pages)"
+    }
+  ],
+  "paths": {
+    "/api/v1/status": {
+      "get": {
+        "operationId": "getApiStatus",
+        "summary": "Health and system status check",
+        "description": "Returns the current health status, uptime, API version, and feature capabilities of the portfolio platform.",
+        "tags": ["System"],
+        "responses": {
+          "200": {
+            "description": "System health and capabilities response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StatusResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource not found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/profile": {
+      "get": {
+        "operationId": "getPortfolioProfile",
+        "summary": "Personal and professional profile",
+        "description": "Retrieves the public profile, role, hometown, focus areas, technical skills, and verified social links for Muhammed Arqam Khan (Arqam).",
+        "tags": ["Profile"],
+        "responses": {
+          "200": {
+            "description": "Profile information",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource not found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects": {
+      "get": {
+        "operationId": "getFeaturedProjects",
+        "summary": "Projects and ventures",
+        "description": "Returns the list of projects built or in development by Arqam (ALIF Billing Tool, ALIF Website, Ward Al Madinah, SayNO, and ASCOOL).",
+        "tags": ["Projects"],
+        "responses": {
+          "200": {
+            "description": "List of projects",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectsResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource not found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/services": {
+      "get": {
+        "operationId": "getServicesOffered",
+        "summary": "Areas of work and technical skills",
+        "description": "Returns core areas of work and technologies worked with.",
+        "tags": ["Services"],
+        "responses": {
+          "200": {
+            "description": "List of areas of work and technical skills",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServicesResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource not found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/contact": {
+      "get": {
+        "operationId": "getContactChannels",
+        "summary": "Contact channels and agent instructions",
+        "description": "Retrieves official contact channels, response turnaround times, and instructions for automated agent inquiries.",
+        "tags": ["Contact"],
+        "responses": {
+          "200": {
+            "description": "Contact channels and instructions",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContactResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource not found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "ProblemDetails": {
+        "type": "object",
+        "description": "RFC 9457 Problem Details object for HTTP APIs",
+        "required": ["type", "title", "status", "detail", "code", "resolution"],
+        "properties": {
+          "type": {
+            "type": "string",
+            "format": "uri",
+            "example": "https://batman-7y3.pages.dev/developers/errors#resource-not-found"
+          },
+          "title": {
+            "type": "string",
+            "example": "Resource Not Found"
+          },
+          "status": {
+            "type": "integer",
+            "example": 404
+          },
+          "detail": {
+            "type": "string",
+            "example": "The requested API endpoint does not exist."
+          },
+          "instance": {
+            "type": "string",
+            "example": "/api/v1/invalid"
+          },
+          "code": {
+            "type": "string",
+            "example": "RESOURCE_NOT_FOUND"
+          },
+          "resolution": {
+            "type": "string",
+            "example": "Check /openapi.json for valid API endpoints."
+          }
+        }
+      },
+      "StatusResponse": {
+        "type": "object",
+        "required": ["status", "version", "service", "environment", "uptime", "features"],
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": ["healthy", "degraded", "maintenance"],
+            "example": "healthy"
+          },
+          "version": {
+            "type": "string",
+            "example": "v1"
+          },
+          "timestamp": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "service": {
+            "type": "string",
+            "example": "Arqam Portfolio & Public API"
+          },
+          "environment": {
+            "type": "string",
+            "example": "production"
+          },
+          "uptime": {
+            "type": "string",
+            "example": "99.99%"
+          },
+          "features": {
+            "type": "object",
+            "properties": {
+              "openApiSpec": { "type": "string", "format": "uri" },
+              "agentIndex": { "type": "string", "format": "uri" },
+              "developerPortal": { "type": "string", "format": "uri" },
+              "contentNegotiation": { "type": "string" }
+            }
+          }
+        }
+      },
+      "ProfileResponse": {
+        "type": "object",
+        "required": ["name", "preferredName", "identity", "role", "location", "summary", "links"],
+        "properties": {
+          "name": { "type": "string", "example": "Muhammed Arqam Khan" },
+          "preferredName": { "type": "string", "example": "Arqam" },
+          "identity": { "type": "string", "example": "Arqam" },
+          "alias": { "type": "string", "example": "1m.btm" },
+          "role": { "type": "string", "example": "Entrepreneur & Founder | Software Developer" },
+          "location": {
+            "type": "object",
+            "required": ["hometown"],
+            "properties": {
+              "hometown": { "type": "string", "example": "Sahibganj, Jharkhand, India" }
+            }
+          },
+          "focusAreas": {
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "skills": {
+            "type": "object",
+            "properties": {
+              "frontend": { "type": "array", "items": { "type": "string" } },
+              "backend": { "type": "array", "items": { "type": "string" } },
+              "developmentAndInfrastructure": { "type": "array", "items": { "type": "string" } },
+              "programming": { "type": "array", "items": { "type": "string" } }
+            }
+          },
+          "summary": { "type": "string" },
+          "links": {
+            "type": "object",
+            "properties": {
+              "website": { "type": "string", "format": "uri" },
+              "github": { "type": "string", "format": "uri" },
+              "x": { "type": "string", "format": "uri" },
+              "linkedin": { "type": "string", "format": "uri" },
+              "telegram": { "type": "string", "format": "uri" },
+              "reddit": { "type": "string", "format": "uri" },
+              "instagramFounder": { "type": "string", "format": "uri" },
+              "instagramPersonal": { "type": "string", "format": "uri" },
+              "contact": { "type": "string" }
+            }
+          }
+        }
+      },
+      "ProjectsResponse": {
+        "type": "object",
+        "required": ["total", "projects"],
+        "properties": {
+          "total": { "type": "integer", "example": 5 },
+          "projects": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["id", "number", "title", "category", "description", "url", "status"],
+              "properties": {
+                "id": { "type": "string", "example": "alif-billing-tool" },
+                "number": { "type": "string", "example": "01" },
+                "title": { "type": "string", "example": "ALIF Billing Tool" },
+                "category": { "type": "string", "example": "Business Management Tool" },
+                "description": { "type": "string" },
+                "url": { "type": "string", "format": "uri" },
+                "status": { "type": "string", "example": "Active Development" }
+              }
+            }
+          }
+        }
+      },
+      "ServicesResponse": {
+        "type": "object",
+        "required": ["total", "services"],
+        "properties": {
+          "total": { "type": "integer", "example": 4 },
+          "services": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["id", "title", "category", "description"],
+              "properties": {
+                "id": { "type": "string", "example": "technology-products" },
+                "title": { "type": "string", "example": "Technology Products & Digital Solutions" },
+                "category": { "type": "string", "example": "PRODUCT BUILDING" },
+                "description": { "type": "string" }
+              }
+            }
+          },
+          "skills": {
+            "type": "object"
+          }
+        }
+      },
+      "ContactResponse": {
+        "type": "object",
+        "required": ["email", "name", "preferredName", "identity", "responseTime", "channels", "instructionsForAgents"],
+        "properties": {
+          "email": { "type": "string", "format": "email", "example": "1m.btmnnn@gmail.com" },
+          "name": { "type": "string", "example": "Muhammed Arqam Khan" },
+          "preferredName": { "type": "string", "example": "Arqam" },
+          "identity": { "type": "string", "example": "Arqam" },
+          "responseTime": { "type": "string", "example": "24-48 hours" },
+          "channels": {
+            "type": "object",
+            "properties": {
+              "email": { "type": "string" },
+              "github": { "type": "string", "format": "uri" },
+              "x": { "type": "string", "format": "uri" },
+              "linkedin": { "type": "string", "format": "uri" },
+              "telegram": { "type": "string", "format": "uri" },
+              "reddit": { "type": "string", "format": "uri" },
+              "instagramFounder": { "type": "string", "format": "uri" },
+              "instagramPersonal": { "type": "string", "format": "uri" }
+            }
+          },
+          "instructionsForAgents": { "type": "string" }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "status": "healthy",
+  "version": "v1",
+  "timestamp": "2026-11-02T00:00:00.000Z",
+  "service": "Arqam Portfolio & Public API",
+  "environment": "production",
+  "uptime": "99.99%",
+  "features": {
+    "openApiSpec": "https://batman-7y3.pages.dev/openapi.json",
+    "agentIndex": "https://batman-7y3.pages.dev/llms.txt",
+    "developerPortal": "https://batman-7y3.pages.dev/developers",
+    "contentNegotiation": "acceptmarkdown.com compliant"
+  }
+}

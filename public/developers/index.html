@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Arqam | Developer Portal &amp; Public API Resources</title>
+  <meta name="description" content="Developer Portal for Muhammed Arqam Khan (Arqam). Access OpenAPI 3.1 specifications, machine-readable agent index (llms.txt), REST endpoints, and integration guides." />
+  <meta name="keywords" content="Arqam, Muhammed Arqam Khan, Portfolio API, Cloudflare Pages, OpenAPI, llms.txt, Developer Portal" />
+  <link rel="canonical" href="https://batman-7y3.pages.dev/developers" />
+  <link rel="icon" type="image/png" href="/favicon.png" />
+  <style>
+    *{margin:0;padding:0;box-sizing:border-box}
+    body{background:#090909;color:#f2f2f0;font-family:'Segoe UI',system-ui,sans-serif;line-height:1.7}
+    nav{display:flex;justify-content:space-between;align-items:center;padding:1.5rem 2rem;border-bottom:1px solid rgba(255,255,255,0.08)}
+    nav a{color:#f2f2f0;text-decoration:none;font-size:0.85rem;text-transform:uppercase;letter-spacing:0.1em;opacity:0.7;transition:opacity 0.2s}
+    nav a:hover{opacity:1}
+    nav .brand{font-weight:800;font-size:1rem;opacity:1;letter-spacing:0.05em}
+    main{max-width:860px;margin:0 auto;padding:4rem 2rem 6rem}
+    h1{font-size:clamp(2.5rem,8vw,4.5rem);font-weight:900;text-transform:uppercase;line-height:1.05;letter-spacing:-0.02em;margin-bottom:1.5rem}
+    h2{font-size:1.15rem;font-weight:700;text-transform:uppercase;letter-spacing:0.12em;color:#b8b8b8;margin:3rem 0 0.85rem;border-bottom:1px solid rgba(255,255,255,0.08);padding-bottom:0.5rem}
+    h3{font-size:0.95rem;font-weight:600;text-transform:uppercase;letter-spacing:0.08em;color:#e0dfdb;margin:1.5rem 0 0.5rem}
+    p{color:#d0d0cc;font-size:1rem;margin-bottom:1rem}
+    ul{color:#d0d0cc;padding-left:1.25rem;margin-bottom:1.5rem}
+    li{margin-bottom:0.4rem}
+    .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:1rem;margin:1.5rem 0 2rem}
+    .card{background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.1);border-radius:12px;padding:1.25rem 1.5rem;transition:border-color 0.2s,transform 0.2s}
+    .card:hover{border-color:rgba(255,255,255,0.3);transform:translateY(-2px)}
+    .card h4{font-size:0.95rem;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:0.4rem;color:#f2f2f0}
+    .card p{font-size:0.85rem;color:#a0a09c;margin-bottom:0.75rem;line-height:1.5}
+    .card a{color:#f2f2f0;font-size:0.8rem;text-transform:uppercase;letter-spacing:0.1em;text-decoration:none;font-weight:600}
+    pre{background:#141414;border:1px solid rgba(255,255,255,0.1);border-radius:8px;padding:1rem 1.25rem;font-family:monospace;font-size:0.85rem;color:#d0d0cc;overflow-x:auto;margin-bottom:1.5rem}
+    table{width:100%;border-collapse:collapse;margin:1.5rem 0 2rem;font-size:0.9rem}
+    th,td{padding:0.75rem 1rem;text-align:left;border:1px solid rgba(255,255,255,0.1)}
+    th{background:rgba(255,255,255,0.06);font-weight:600;color:#f2f2f0;text-transform:uppercase;letter-spacing:0.05em;font-size:0.8rem}
+    td{color:#d0d0cc}
+    td code{background:rgba(255,255,255,0.08);padding:0.15rem 0.4rem;border-radius:4px;font-family:monospace;font-size:0.85rem}
+    a.link{color:#f2f2f0;border-bottom:1px solid rgba(255,255,255,0.3);text-decoration:none;transition:border-color 0.2s}
+    a.link:hover{border-color:#f2f2f0}
+    footer{padding:2rem;text-align:center;font-size:0.75rem;color:#666;border-top:1px solid rgba(255,255,255,0.06);text-transform:uppercase;letter-spacing:0.1em}
+  </style>
+
+  <!-- JSON-LD: Developer Portal -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@type": "WebSite",
+        "name": "Arqam Developer Portal",
+        "url": "https://batman-7y3.pages.dev/developers",
+        "description": "Developer portal for Arqam's portfolio — OpenAPI 3.1 specifications, machine-readable agent index, and REST endpoints.",
+        "author": {
+          "@type": "Person",
+          "name": "Muhammed Arqam Khan",
+          "alternateName": "Arqam",
+          "email": "1m.btmnnn@gmail.com"
+        }
+      }
+    ]
+  }
+  </script>
+</head>
+<body>
+  <nav>
+    <a class="brand" href="/">Arqam</a>
+    <div style="display:flex;gap:2rem">
+      <a href="/about">About</a>
+      <a href="/developers">Developers</a>
+      <a href="/contact">Contact</a>
+    </div>
+  </nav>
+
+  <main>
+    <h1>Developer Portal</h1>
+    <p>
+      API documentation, machine-readable specifications, and discovery endpoints for the portfolio of
+      <strong>Muhammed Arqam Khan (Arqam)</strong> hosted on Cloudflare Pages.
+    </p>
+
+    <h2>Core Developer Resources</h2>
+    <div class="grid">
+      <div class="card">
+        <h4>OpenAPI 3.1 Spec</h4>
+        <p>Complete typed JSON REST specification with schemas, parameter definitions, and error models.</p>
+        <a href="/openapi.json" target="_blank">View /openapi.json →</a>
+      </div>
+      <div class="card">
+        <h4>AI Agent Index (llms.txt)</h4>
+        <p>Machine-readable markdown directory and instructions optimized for AI agents.</p>
+        <a href="/llms.txt" target="_blank">View /llms.txt →</a>
+      </div>
+      <div class="card">
+        <h4>XML Sitemap</h4>
+        <p>Canonical sitemap of all public indexable endpoints and documentation pages.</p>
+        <a href="/sitemap.xml" target="_blank">View /sitemap.xml →</a>
+      </div>
+      <div class="card">
+        <h4>Content Negotiation</h4>
+        <p>Compliant with acceptmarkdown.com standards. Request <code>Accept: text/markdown</code> on any page.</p>
+        <a href="https://acceptmarkdown.com" target="_blank" rel="noopener">Learn more →</a>
+      </div>
+    </div>
+
+    <h2>Public REST Endpoints (v1)</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>Method</th>
+          <th>Endpoint</th>
+          <th>Description</th>
+          <th>Content-Type</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><code>GET</code></td>
+          <td><code>/api/v1/status</code></td>
+          <td>Platform health, versioning, uptime, and features</td>
+          <td><code>application/json</code></td>
+        </tr>
+        <tr>
+          <td><code>GET</code></td>
+          <td><code>/api/v1/profile</code></td>
+          <td>Arqam's identity, focus areas, technical skills, and verified links</td>
+          <td><code>application/json</code></td>
+        </tr>
+        <tr>
+          <td><code>GET</code></td>
+          <td><code>/api/v1/projects</code></td>
+          <td>Projects list (ALIF Billing Tool, ALIF Website, Ward Al Madinah, SayNO, ASCOOL)</td>
+          <td><code>application/json</code></td>
+        </tr>
+        <tr>
+          <td><code>GET</code></td>
+          <td><code>/api/v1/services</code></td>
+          <td>Areas of work and technical skills</td>
+          <td><code>application/json</code></td>
+        </tr>
+        <tr>
+          <td><code>GET</code></td>
+          <td><code>/api/v1/contact</code></td>
+          <td>Contact channels, turnaround, and agent instructions</td>
+          <td><code>application/json</code></td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h2 id="deprecation">Versioning &amp; Deprecation Policy</h2>
+    <p>
+      All public API routes are versioned via URL path (<code>/api/v1/</code>) and follow RFC 8594 protocols:
+    </p>
+    <ul>
+      <li><strong>Notice Period:</strong> Any API feature scheduled for deprecation will be supported for a minimum of <strong>6 months</strong>.</li>
+      <li><strong>Headers:</strong> Deprecated endpoints return <code>Deprecation: true</code> and <code>Sunset: &lt;HTTP-date&gt;</code> headers.</li>
+      <li><strong>Backwards Compatibility:</strong> Non-breaking schema additions may be introduced without bumping the major version.</li>
+    </ul>
+
+    <h2>RFC 9457 Error Standard</h2>
+    <p>All API errors return structured <code>application/problem+json</code> payloads with machine-readable error codes and resolution hints:</p>
+    <pre>{
+  "type": "https://batman-7y3.pages.dev/developers/errors#resource-not-found",
+  "title": "Resource Not Found",
+  "status": 404,
+  "detail": "The requested API endpoint does not exist.",
+  "instance": "/api/v1/invalid",
+  "code": "RESOURCE_NOT_FOUND",
+  "resolution": "Check /openapi.json for all valid endpoints."
+}</pre>
+
+    <h2>Quickstarts</h2>
+    <p>Developers and AI agents can query endpoints using standard cURL:</p>
+
+    <h3>1. Quick API Status Check</h3>
+    <pre>curl -s https://batman-7y3.pages.dev/api/v1/status | jq .</pre>
+
+    <h3>2. Fetch Profile &amp; Projects</h3>
+    <pre>curl -s https://batman-7y3.pages.dev/api/v1/profile | jq .
+curl -s https://batman-7y3.pages.dev/api/v1/projects | jq .</pre>
+
+    <h3>3. Markdown Content Negotiation</h3>
+    <pre>curl -s -H "Accept: text/markdown" https://batman-7y3.pages.dev/</pre>
+
+    <h2>Contact &amp; Support</h2>
+    <p>
+      For developer integrations, project inquiries, or reporting issues:
+      <a class="link" href="mailto:1m.btmnnn@gmail.com">1m.btmnnn@gmail.com</a> with subject <code>[Developer / API]</code>.
+    </p>
+  </main>
+
+  <footer>© 2026 Arqam · Muhammed Arqam Khan · All rights reserved · <a href="/privacy" style="color:#666">Privacy</a></footer>
+</body>
+</html>
