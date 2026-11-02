@@ -1,22 +1,20 @@
 import type { FC, CSSProperties } from 'react';
-import { useRef, useState } from 'react';
+import { useRef, useState, useEffect, useCallback } from 'react';
 import { motion, useScroll, useTransform, MotionValue } from 'framer-motion';
 import { FadeIn } from './FadeIn';
 import { LiveProjectButton } from './LiveProjectButton';
+import { ToastNotification } from './ToastNotification';
 
 export interface Project {
   number: string;
   name: string;
-  category: string;
   status: string;
-  description: string;
   link?: string;
-  isMirrorCard?: boolean;
+  notificationMessage?: string;
+  objectPosition?: 'top' | 'center';
   /**
-   * Optional image paths for the 3 card preview slots.
-   * Leave undefined or empty string "" to render the obsidian mirror placeholder.
-   * When actual project images are ready, place them in `public/projects/`
-   * and set e.g. col1Img1: "/projects/alif-billing-1.webp".
+   * Image paths for the 3 card preview slots (all in WebP format).
+   * Leave undefined or empty string "" to render the obsidian mirror fallback visual.
    */
   col1Img1?: string;
   col1Img2?: string;
@@ -27,52 +25,52 @@ export const projectsData: Project[] = [
   {
     number: "01",
     name: "ALIF Billing Tool",
-    category: "Business Management Tool",
     status: "Active Development",
-    description: "A billing and business management tool associated with ALIF.",
-    col1Img1: "",
-    col1Img2: "",
-    col2Img: "",
+    notificationMessage: "ALIF Billing Tool is currently a private project.",
+    objectPosition: "top",
+    col1Img1: "/projects/alif-billing-1.webp",
+    col1Img2: "/projects/alif-billing-2.webp",
+    col2Img: "/projects/alif-billing-3.webp",
   },
   {
     number: "02",
     name: "ALIF Website",
-    category: "Official Business Website",
     status: "Active",
-    description: "Official website project for ALIF Ladies Tailor.",
-    col1Img1: "",
-    col1Img2: "",
-    col2Img: "",
+    link: "https://aliflt.netlify.app/",
+    objectPosition: "top",
+    col1Img1: "/projects/alif-1.webp",
+    col1Img2: "/projects/alif-2.webp",
+    col2Img: "/projects/alif-3.webp",
   },
   {
     number: "03",
     name: "Ward Al Madinah",
-    category: "Freelance & Client Website",
     status: "Client Project",
-    description: "Website development work for a client. This project also represents my freelance website development and website-selling work.",
-    col1Img1: "",
-    col1Img2: "",
-    col2Img: "",
+    link: "https://wardalmadinah.pages.dev/",
+    objectPosition: "top",
+    col1Img1: "/projects/ward-al-madinah-1.webp",
+    col1Img2: "/projects/ward-al-madinah-2.webp",
+    col2Img: "/projects/ward-al-madinah-3.webp",
   },
   {
     number: "04",
     name: "SayNO",
-    category: "Digital Product Concept",
-    status: "Pending / Experimental Project",
-    description: "A digital product concept focused on helping users manage digital distractions and improve self-control.",
-    col1Img1: "",
-    col1Img2: "",
-    col2Img: "",
+    status: "Experimental / Pending",
+    link: "https://saynoapp.webtree.workers.dev/",
+    objectPosition: "top",
+    col1Img1: "/projects/sayno-1.webp",
+    col1Img2: "/projects/sayno-2.webp",
+    col2Img: "/projects/sayno-3.webp",
   },
   {
     number: "05",
     name: "ASCOOL",
-    category: "Upcoming Venture",
-    status: "Upcoming Project",
-    description: "An upcoming project. Coming soon.",
-    col1Img1: "",
-    col1Img2: "",
-    col2Img: "",
+    status: "Coming Soon",
+    notificationMessage: "ASCOOL is coming soon. Stay tuned.",
+    objectPosition: "center",
+    col1Img1: "/projects/ascool-1.webp",
+    col1Img2: "/projects/ascool-2.webp",
+    col2Img: "/projects/ascool-3.webp",
   },
 ];
 
@@ -80,27 +78,29 @@ interface ImageSlotProps {
   src?: string;
   alt: string;
   variant: 'top-left' | 'bottom-left' | 'tall-right';
-  projectName: string;
-  projectStatus: string;
+  objectPosition?: 'top' | 'center';
 }
 
 const ProjectImageSlot: FC<ImageSlotProps> = ({
   src,
   alt,
   variant,
-  projectName,
-  projectStatus,
+  objectPosition = 'top',
 }) => {
   const [imgError, setImgError] = useState(false);
   const hasValidImage = Boolean(src && src.trim() !== '' && !imgError);
 
-  const slotStyles: Record<ImageSlotProps['variant'], CSSProperties> = {
+  const aspectClasses: Record<ImageSlotProps['variant'], string> = {
+    'top-left': 'aspect-[1024/585]',
+    'bottom-left': 'aspect-[1024/680]',
+    'tall-right': 'aspect-[1024/875] md:aspect-auto md:h-full md:min-h-[380px]',
+  };
+
+  const mirrorBackgrounds: Record<ImageSlotProps['variant'], CSSProperties> = {
     'top-left': {
-      height: 'clamp(130px, 16vw, 230px)',
       background: 'linear-gradient(135deg, #262626 0%, #151515 50%, #0a0a0a 100%)',
     },
     'bottom-left': {
-      height: 'clamp(160px, 22vw, 340px)',
       background: 'linear-gradient(135deg, #1c1c1c 0%, #111111 50%, #060606 100%)',
     },
     'tall-right': {
@@ -110,28 +110,30 @@ const ProjectImageSlot: FC<ImageSlotProps> = ({
 
   if (hasValidImage) {
     return (
-      <img
-        src={src}
-        alt={alt}
-        loading="lazy"
-        decoding="async"
-        onError={() => setImgError(true)}
-        className={`w-full rounded-[40px] sm:rounded-[50px] md:rounded-[60px] object-cover border border-[#e0dfdb]/10 ${
-          variant === 'tall-right' ? 'h-full min-h-[290px] md:min-h-[400px]' : ''
-        }`}
-        style={variant !== 'tall-right' ? { height: slotStyles[variant].height } : undefined}
-      />
+      <div
+        className={`w-full rounded-[28px] sm:rounded-[40px] md:rounded-[52px] overflow-hidden border border-[#e0dfdb]/15 bg-[#111111] shadow-xl ${aspectClasses[variant]}`}
+      >
+        <img
+          src={src}
+          alt={alt}
+          loading="lazy"
+          decoding="async"
+          onError={() => setImgError(true)}
+          className={`w-full h-full object-cover select-none ${
+            objectPosition === 'center' ? 'object-center' : 'object-top'
+          }`}
+        />
+      </div>
     );
   }
 
-  // Fallback visual: Existing obsidian mirror gradient treatment ready for future images
+  // Fallback visual: Clean obsidian liquid-mirror card
   if (variant === 'tall-right') {
     return (
       <div
-        className="w-full h-full min-h-[290px] md:min-h-[400px] rounded-[40px] sm:rounded-[50px] md:rounded-[60px] border border-white/25 relative overflow-hidden shadow-2xl flex flex-col justify-between p-6 sm:p-8"
-        style={slotStyles['tall-right']}
+        className={`w-full rounded-[28px] sm:rounded-[40px] md:rounded-[52px] border border-white/25 relative overflow-hidden shadow-2xl ${aspectClasses['tall-right']}`}
+        style={mirrorBackgrounds['tall-right']}
       >
-        {/* Specular mirror sheen */}
         <div
           className="absolute inset-0 pointer-events-none opacity-45"
           style={{
@@ -139,33 +141,16 @@ const ProjectImageSlot: FC<ImageSlotProps> = ({
               'linear-gradient(125deg, rgba(255,255,255,0.28) 0%, transparent 35%, rgba(255,255,255,0.08) 55%, transparent 100%)',
           }}
         />
-        {/* Ambient glow */}
         <div className="absolute -right-16 -bottom-16 w-72 h-72 rounded-full bg-white/[0.04] blur-3xl pointer-events-none" />
-
-        <div className="relative z-10 flex items-center justify-between">
-          <span className="font-mono text-[10px] sm:text-xs uppercase tracking-widest text-white/35">
-            {projectStatus}
-          </span>
-          <span className="font-mono text-[10px] uppercase tracking-widest text-white/25">
-            PREVIEW SLOT
-          </span>
-        </div>
-
-        <div className="relative z-10">
-          <p className="font-black uppercase text-xl sm:text-2xl md:text-3xl tracking-tight text-white/20 select-none">
-            {projectName}
-          </p>
-        </div>
       </div>
     );
   }
 
   return (
     <div
-      className="w-full rounded-[40px] sm:rounded-[50px] md:rounded-[60px] border border-white/20 relative overflow-hidden shadow-xl"
-      style={slotStyles[variant]}
+      className={`w-full rounded-[28px] sm:rounded-[40px] md:rounded-[52px] border border-white/20 relative overflow-hidden shadow-xl ${aspectClasses[variant]}`}
+      style={mirrorBackgrounds[variant]}
     >
-      {/* Diagonal mirror light sheen */}
       <div
         className="absolute inset-0 pointer-events-none opacity-35"
         style={{
@@ -184,9 +169,10 @@ interface CardProps {
   index: number;
   totalCards: number;
   progress: MotionValue<number>;
+  onNotify: (message: string) => void;
 }
 
-const ProjectCard: FC<CardProps> = ({ project, index, totalCards, progress }) => {
+const ProjectCard: FC<CardProps> = ({ project, index, totalCards, progress, onNotify }) => {
   const cardRef = useRef<HTMLDivElement>(null);
 
   // Calculate target scale: 1 - (totalCards - 1 - index) * 0.025
@@ -194,12 +180,19 @@ const ProjectCard: FC<CardProps> = ({ project, index, totalCards, progress }) =>
   const rangeStart = index * (1 / totalCards);
   const scale = useTransform(progress, [rangeStart, 1], [1, targetScale]);
 
+  const handleActionClick = () => {
+    if (!project.link && project.notificationMessage) {
+      onNotify(project.notificationMessage);
+    }
+  };
+
   return (
     <div
       ref={cardRef}
-      className="sticky top-24 md:top-32 h-auto flex justify-center items-center mb-12 sm:mb-16 md:mb-20"
+      className="sticky top-20 sm:top-24 md:top-28 h-auto flex justify-center items-center mb-12 sm:mb-16 md:mb-20"
       style={{
-        top: `${88 + index * 22}px`,
+        top: `${84 + index * 22}px`,
+        zIndex: index + 1,
       }}
     >
       <motion.div
@@ -207,66 +200,61 @@ const ProjectCard: FC<CardProps> = ({ project, index, totalCards, progress }) =>
           scale,
           transformOrigin: 'top center',
         }}
-        className="w-full max-w-6xl rounded-[40px] sm:rounded-[50px] md:rounded-[60px] border-2 border-[#e0dfdb] bg-[#090909] p-4 sm:p-6 md:p-8 shadow-2xl overflow-hidden origin-top will-change-transform transform-gpu"
+        className="w-full max-w-6xl rounded-[36px] sm:rounded-[48px] md:rounded-[60px] border-2 border-[#e0dfdb] bg-[#090909] p-4 sm:p-6 md:p-8 shadow-2xl overflow-hidden origin-top will-change-transform transform-gpu"
       >
-        {/* Top Row: Number, Category, Name, Description, Status / Live Button */}
-        <div className="flex flex-wrap items-start sm:items-center justify-between gap-4 pb-5 border-b border-[#e0dfdb]/20">
-          <div className="flex items-start sm:items-center gap-4 sm:gap-6 flex-1 min-w-[240px]">
+        {/* Top Row: Number, Short Status, Project Name, and Direct View Project ↗ Button */}
+        <div className="flex flex-wrap items-center justify-between gap-4 pb-4 sm:pb-5 border-b border-[#e0dfdb]/20">
+          <div className="flex items-center gap-3.5 sm:gap-6 min-w-0">
             <span
               className="font-black text-[#f2f2f0] leading-none select-none shrink-0"
-              style={{ fontSize: 'clamp(2.5rem, 6vw, 5rem)' }}
+              style={{ fontSize: 'clamp(2.25rem, 5.5vw, 4.75rem)' }}
             >
               {project.number}
             </span>
-            <div className="flex flex-col">
-              <span className="text-xs sm:text-sm uppercase tracking-widest text-[#b8b8b8] font-light">
-                {project.category} · {project.status}
+            <div className="flex flex-col min-w-0">
+              <span className="text-[11px] sm:text-xs md:text-sm uppercase tracking-widest text-[#b8b8b8] font-light truncate">
+                {project.status}
               </span>
-              <h3 className="text-lg sm:text-2xl md:text-3xl font-medium uppercase text-[#f2f2f0] mt-0.5">
+              <h3 className="text-lg sm:text-2xl md:text-3xl font-medium uppercase text-[#f2f2f0] tracking-tight truncate">
                 {project.name}
               </h3>
-              <p className="text-xs sm:text-sm text-[#f2f2f0]/70 font-light mt-1.5 max-w-2xl leading-relaxed">
-                {project.description}
-              </p>
             </div>
           </div>
 
-          <div className="shrink-0">
+          <div className="shrink-0 ml-auto sm:ml-0">
             <LiveProjectButton
-              label={project.link ? 'Live Project' : project.status}
+              label="View Project ↗"
               href={project.link}
+              onClick={!project.link ? handleActionClick : undefined}
             />
           </div>
         </div>
 
-        {/* Bottom Row: 3-Slot Preview Grid (automatically renders images when provided or obsidian mirror placeholders) */}
-        <div className="grid grid-cols-1 md:grid-cols-12 gap-4 md:gap-6 mt-6 md:mt-8">
-          {/* Left Column (40% width / 5 cols): 2 stacked slots */}
+        {/* Bottom Row: 3-Slot Visual Preview Grid */}
+        <div className="grid grid-cols-1 md:grid-cols-12 gap-4 md:gap-6 mt-5 sm:mt-6 md:mt-8">
+          {/* Left Column (5 cols): 2 stacked slots */}
           <div className="md:col-span-5 flex flex-col gap-4 md:gap-6">
             <ProjectImageSlot
-              src={project.isMirrorCard ? undefined : project.col1Img1}
-              alt={`${project.name} preview 1`}
+              src={project.col1Img1}
+              alt={`${project.name} screenshot 1`}
               variant="top-left"
-              projectName={project.name}
-              projectStatus={project.status}
+              objectPosition={project.objectPosition}
             />
             <ProjectImageSlot
-              src={project.isMirrorCard ? undefined : project.col1Img2}
-              alt={`${project.name} preview 2`}
+              src={project.col1Img2}
+              alt={`${project.name} screenshot 2`}
               variant="bottom-left"
-              projectName={project.name}
-              projectStatus={project.status}
+              objectPosition={project.objectPosition}
             />
           </div>
 
-          {/* Right Column (60% width / 7 cols): 1 tall slot */}
+          {/* Right Column (7 cols): 1 tall slot */}
           <div className="md:col-span-7 flex">
             <ProjectImageSlot
-              src={project.isMirrorCard ? undefined : project.col2Img}
-              alt={`${project.name} main preview`}
+              src={project.col2Img}
+              alt={`${project.name} screenshot 3`}
               variant="tall-right"
-              projectName={project.name}
-              projectStatus={project.status}
+              objectPosition={project.objectPosition}
             />
           </div>
         </div>
@@ -277,6 +265,36 @@ const ProjectCard: FC<CardProps> = ({ project, index, totalCards, progress }) =>
 
 export const ProjectsSection: FC = () => {
   const containerRef = useRef<HTMLDivElement>(null);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const toastTimerRef = useRef<number | null>(null);
+
+  const showToast = useCallback((message: string) => {
+    setToastMessage(message);
+    if (toastTimerRef.current) {
+      window.clearTimeout(toastTimerRef.current);
+    }
+    toastTimerRef.current = window.setTimeout(() => {
+      setToastMessage(null);
+      toastTimerRef.current = null;
+    }, 3200);
+  }, []);
+
+  const dismissToast = useCallback(() => {
+    if (toastTimerRef.current) {
+      window.clearTimeout(toastTimerRef.current);
+      toastTimerRef.current = null;
+    }
+    setToastMessage(null);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (toastTimerRef.current) {
+        window.clearTimeout(toastTimerRef.current);
+      }
+    };
+  }, []);
+
   const { scrollYProgress } = useScroll({
     target: containerRef,
     offset: ['start start', 'end end'],
@@ -286,7 +304,7 @@ export const ProjectsSection: FC = () => {
     <section
       ref={containerRef}
       id="projects"
-      className="relative z-10 bg-[#090909] text-[#f2f2f0] px-4 sm:px-8 md:px-10 py-20 sm:py-24 md:py-32 w-full min-h-[380vh]"
+      className="relative z-10 bg-[#090909] text-[#f2f2f0] px-4 sm:px-8 md:px-10 py-20 sm:py-24 md:py-32 w-full min-h-[360vh]"
     >
       {/* Heading */}
       <FadeIn delay={0} y={40}>
@@ -307,9 +325,13 @@ export const ProjectsSection: FC = () => {
             index={index}
             totalCards={projectsData.length}
             progress={scrollYProgress}
+            onNotify={showToast}
           />
         ))}
       </div>
+
+      {/* Reusable Toast Notification for Private / Upcoming Projects */}
+      <ToastNotification message={toastMessage} onClose={dismissToast} />
     </section>
   );
 };

@@ -1,24 +1,50 @@
-import type { FC } from 'react';
+import type { FC, MouseEvent } from 'react';
 import { motion } from 'framer-motion';
 import { FadeIn } from './FadeIn';
 import { ContactButton } from './ContactButton';
 import { Magnet } from './Magnet';
 
+const NAV_ITEMS = [
+  { label: 'About', href: '#about' },
+  { label: 'Expertise', href: '#expertise' },
+  { label: 'Projects', href: '#projects' },
+  { label: 'Contact', href: '#contact' },
+] as const;
+
 export const HeroSection: FC = () => {
+  const handleNavClick = (e: MouseEvent<HTMLAnchorElement>, href: string) => {
+    const targetId = href.slice(1);
+    const targetEl = document.getElementById(targetId);
+    if (targetEl) {
+      e.preventDefault();
+      targetEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      window.history.pushState(null, '', href);
+    }
+  };
+
   return (
     <section className="relative h-screen w-full flex flex-col justify-between overflow-x-clip bg-[#090909]">
       {/* Navbar */}
-      <FadeIn delay={0} y={-20} className="w-full z-20">
-        <nav className="w-full flex justify-between items-center px-6 md:px-10 pt-6 md:pt-8 text-[#f2f2f0] font-medium uppercase tracking-wider text-sm md:text-lg lg:text-[1.4rem]">
-          <a href="#about" className="hover:text-[#b8b8b8] transition-colors duration-200">About</a>
-          <a href="#expertise" className="hover:text-[#b8b8b8] transition-colors duration-200">Expertise</a>
-          <a href="#projects" className="hover:text-[#b8b8b8] transition-colors duration-200">Projects</a>
-          <a href="#contact" className="hover:text-[#b8b8b8] transition-colors duration-200">Contact</a>
+      <FadeIn delay={0} y={-20} className="w-full relative z-30 pointer-events-auto">
+        <nav
+          aria-label="Primary Navigation"
+          className="w-full flex justify-between items-center px-6 md:px-10 pt-6 md:pt-8 text-[#f2f2f0] font-medium uppercase tracking-wider text-sm md:text-lg lg:text-[1.4rem]"
+        >
+          {NAV_ITEMS.map((item) => (
+            <a
+              key={item.href}
+              href={item.href}
+              onClick={(e) => handleNavClick(e, item.href)}
+              className="py-1 px-1.5 hover:text-[#b8b8b8] transition-colors duration-200 cursor-pointer select-none"
+            >
+              {item.label}
+            </a>
+          ))}
         </nav>
       </FadeIn>
 
       {/* Hero Heading - Massive with crisp letter gaps */}
-      <div className="w-full flex justify-center items-center z-0 px-2 sm:px-4 overflow-visible">
+      <div className="w-full flex justify-center items-center z-0 px-2 sm:px-4 overflow-visible pointer-events-none">
         <FadeIn delay={0.15} y={40} className="w-full flex justify-center">
           <h1 className="hero-heading font-black uppercase tracking-tight leading-none whitespace-nowrap text-center w-full text-[18vw] sm:text-[19.5vw] md:text-[21vw] lg:text-[22vw] mt-4 sm:mt-2 md:-mt-4 select-none">
             Arqam
@@ -30,7 +56,7 @@ export const HeroSection: FC = () => {
       <FadeIn
         delay={0.6}
         y={30}
-        className="absolute left-1/2 -translate-x-1/2 z-10 pointer-events-auto w-[280px] sm:w-[360px] md:w-[440px] lg:w-[520px] top-1/2 -translate-y-1/2 sm:top-auto sm:translate-y-0 sm:bottom-0"
+        className="absolute left-1/2 -translate-x-1/2 z-10 pointer-events-none w-[280px] sm:w-[360px] md:w-[440px] lg:w-[520px] top-1/2 -translate-y-1/2 sm:top-auto sm:translate-y-0 sm:bottom-0"
       >
         <Magnet
           padding={150}
@@ -46,7 +72,7 @@ export const HeroSection: FC = () => {
             dragTransition={{ bounceStiffness: 350, bounceDamping: 22 }}
             whileDrag={{ scale: 1.05, cursor: 'grabbing' }}
             whileTap={{ scale: 1.02 }}
-            className="w-full flex justify-center cursor-grab active:cursor-grabbing touch-none select-none"
+            className="w-full flex justify-center cursor-grab active:cursor-grabbing touch-none select-none pointer-events-auto"
           >
             <img
               src="/hero-portrait.webp"
@@ -61,7 +87,7 @@ export const HeroSection: FC = () => {
       </FadeIn>
 
       {/* Bottom Bar */}
-      <div className="w-full px-6 md:px-10 pb-7 sm:pb-8 md:pb-10 flex justify-between items-end gap-4 z-20">
+      <div className="w-full px-6 md:px-10 pb-7 sm:pb-8 md:pb-10 flex justify-between items-end gap-4 relative z-30 pointer-events-auto">
         <FadeIn delay={0.35} y={20}>
           <div className="max-w-[200px] sm:max-w-[290px] md:max-w-[380px]">
             <p className="text-[#b8b8b8] font-mono text-[10px] sm:text-xs uppercase tracking-widest mb-1.5">

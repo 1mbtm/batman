@@ -5,46 +5,68 @@
       "id": "alif-billing-tool",
       "number": "01",
       "title": "ALIF Billing Tool",
-      "category": "Business Management Tool",
-      "description": "A billing and business management tool associated with ALIF.",
-      "url": "https://batman-7y3.pages.dev/#projects",
-      "status": "Active Development"
+      "status": "Active Development",
+      "url": null,
+      "visibility": "private",
+      "notificationMessage": "ALIF Billing Tool is currently a private project.",
+      "images": [
+        "/projects/alif-billing-1.webp",
+        "/projects/alif-billing-2.webp",
+        "/projects/alif-billing-3.webp"
+      ]
     },
     {
       "id": "alif-website",
       "number": "02",
       "title": "ALIF Website",
-      "category": "Official Business Website",
-      "description": "Official website project for ALIF Ladies Tailor.",
-      "url": "https://batman-7y3.pages.dev/#projects",
-      "status": "Active"
+      "status": "Active",
+      "url": "https://aliflt.netlify.app/",
+      "visibility": "public",
+      "images": [
+        "/projects/alif-1.webp",
+        "/projects/alif-2.webp",
+        "/projects/alif-3.webp"
+      ]
     },
     {
       "id": "ward-al-madinah",
       "number": "03",
       "title": "Ward Al Madinah",
-      "category": "Freelance & Client Website",
-      "description": "Website development work for a client. This project also represents my freelance website development and website-selling work.",
-      "url": "https://batman-7y3.pages.dev/#projects",
-      "status": "Client Project"
+      "status": "Client Project",
+      "url": "https://wardalmadinah.pages.dev/",
+      "visibility": "public",
+      "images": [
+        "/projects/ward-al-madinah-1.webp",
+        "/projects/ward-al-madinah-2.webp",
+        "/projects/ward-al-madinah-3.webp"
+      ]
     },
     {
       "id": "sayno",
       "number": "04",
       "title": "SayNO",
-      "category": "Digital Product Concept",
-      "description": "A digital product concept focused on helping users manage digital distractions and improve self-control.",
-      "url": "https://batman-7y3.pages.dev/#projects",
-      "status": "Pending / Experimental Project"
+      "status": "Experimental / Pending",
+      "url": "https://saynoapp.webtree.workers.dev/",
+      "visibility": "public",
+      "images": [
+        "/projects/sayno-1.webp",
+        "/projects/sayno-2.webp",
+        "/projects/sayno-3.webp"
+      ]
     },
     {
       "id": "ascool",
       "number": "05",
       "title": "ASCOOL",
-      "category": "Upcoming Venture",
-      "description": "An upcoming project.",
-      "url": "https://batman-7y3.pages.dev/#projects",
-      "status": "Upcoming Project"
+      "status": "Coming Soon",
+      "url": null,
+      "visibility": "upcoming",
+      "notificationMessage": "ASCOOL is coming soon. Stay tuned.",
+      "images": [
+        "/projects/ascool-1.webp",
+        "/projects/ascool-2.webp",
+        "/projects/ascool-3.webp"
+      ]
     }
   ]
 }

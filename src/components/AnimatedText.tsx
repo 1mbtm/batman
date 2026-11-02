@@ -30,29 +30,40 @@ const Word: FC<WordProps> = ({ word, progress, range }) => {
 };
 
 export const AnimatedText: FC<AnimatedTextProps> = ({ text, className = "", style }) => {
-  const containerRef = useRef<HTMLParagraphElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
   const { scrollYProgress } = useScroll({
     target: containerRef,
     offset: ['start 0.85', 'end 0.35'],
   });
 
-  const words = text.split(" ");
-  const totalWords = words.length;
+  const paragraphs = text
+    .split(/\n+/)
+    .map((p) => p.trim())
+    .filter(Boolean)
+    .map((p) => p.split(/\s+/));
+
+  const totalWords = paragraphs.reduce((acc, words) => acc + words.length, 0);
+  let globalIndex = 0;
 
   return (
-    <p ref={containerRef} className={className} style={style}>
-      {words.map((word, i) => {
-        const start = i / totalWords;
-        const end = Math.min(1, start + 1.2 / totalWords);
-        return (
-          <Word
-            key={`w-${i}-${word}`}
-            word={word}
-            progress={scrollYProgress}
-            range={[start, end]}
-          />
-        );
-      })}
-    </p>
+    <div ref={containerRef} className={`space-y-5 sm:space-y-6 ${className}`} style={style}>
+      {paragraphs.map((words, pIdx) => (
+        <p key={`p-${pIdx}`}>
+          {words.map((word) => {
+            const currentIndex = globalIndex++;
+            const start = currentIndex / totalWords;
+            const end = Math.min(1, start + 1.2 / totalWords);
+            return (
+              <Word
+                key={`w-${pIdx}-${currentIndex}-${word}`}
+                word={word}
+                progress={scrollYProgress}
+                range={[start, end]}
+              />
+            );
+          })}
+        </p>
+      ))}
+    </div>
   );
 };

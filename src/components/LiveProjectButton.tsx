@@ -1,4 +1,4 @@
-import type { FC } from 'react';
+import type { FC, MouseEvent } from 'react';
 
 interface LiveProjectButtonProps {
   label?: string;
@@ -8,40 +8,44 @@ interface LiveProjectButtonProps {
 }
 
 export const LiveProjectButton: FC<LiveProjectButtonProps> = ({
-  label = "Live Project",
+  label = "View Project ↗",
   href,
   onClick,
   className = "",
 }) => {
-  if (href && !onClick) {
+  const baseClasses = `relative inline-flex items-center justify-center rounded-full border-2 border-[#e0dfdb] text-[#f2f2f0] font-medium uppercase tracking-widest px-5 py-2.5 sm:px-7 sm:py-3 min-h-[42px] text-xs sm:text-sm whitespace-nowrap hover:bg-[#f2f2f0] hover:text-[#090909] hover:border-[#f2f2f0] active:scale-[0.97] transition-all duration-200 cursor-pointer select-none button-alive ${className}`;
+
+  if (href) {
+    const handleAnchorClick = (e: MouseEvent<HTMLAnchorElement>) => {
+      e.stopPropagation();
+      onClick?.();
+    };
+
     return (
       <a
         href={href}
         target="_blank"
         rel="noopener noreferrer"
-        className={`relative inline-flex items-center justify-center rounded-full border-2 border-[#e0dfdb] text-[#f2f2f0] font-medium uppercase tracking-widest px-6 py-2.5 sm:px-8 sm:py-3 text-xs sm:text-sm hover:bg-[#f2f2f0]/10 hover:border-[#f2f2f0] transition-all duration-200 cursor-pointer button-alive ${className}`}
+        onClick={handleAnchorClick}
+        className={baseClasses}
       >
         <span className="relative z-10">{label}</span>
       </a>
     );
   }
 
-  if (onClick) {
-    return (
-      <button
-        onClick={onClick}
-        className={`relative inline-flex items-center justify-center rounded-full border-2 border-[#e0dfdb] text-[#f2f2f0] font-medium uppercase tracking-widest px-6 py-2.5 sm:px-8 sm:py-3 text-xs sm:text-sm hover:bg-[#f2f2f0]/10 hover:border-[#f2f2f0] transition-all duration-200 cursor-pointer button-alive ${className}`}
-      >
-        <span className="relative z-10">{label}</span>
-      </button>
-    );
-  }
+  const handleButtonClick = (e: MouseEvent<HTMLButtonElement>) => {
+    e.stopPropagation();
+    onClick?.();
+  };
 
   return (
-    <span
-      className={`relative inline-flex items-center justify-center rounded-full border-2 border-[#e0dfdb]/60 text-[#f2f2f0] font-medium uppercase tracking-widest px-6 py-2.5 sm:px-8 sm:py-3 text-xs sm:text-sm select-none ${className}`}
+    <button
+      type="button"
+      onClick={handleButtonClick}
+      className={baseClasses}
     >
       <span className="relative z-10">{label}</span>
-    </span>
+    </button>
   );
 };

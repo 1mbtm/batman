@@ -9,6 +9,10 @@ import emoji2 from '../assets/emojis/emoji2.webp';
 import emoji3 from '../assets/emojis/emoji3.webp';
 import emoji4 from '../assets/emojis/emoji4.webp';
 
+const ABOUT_TEXT = `I’m Arqam, an entrepreneur and self-taught developer from Sahibganj, India. My work spans software development, digital products, and business. I build websites and digital solutions for clients while also developing products and working on offline business ventures.
+My interest in technology began with exploring how software works, experimenting with systems, and understanding the ideas behind them. Over time, that curiosity grew into a practical interest in software development, reverse engineering, and building products of my own.
+Alongside my work, I’m completing Class 12 at The Assembly of God Church School, Kolkata.`;
+
 export const AboutSection: FC = () => {
   const sectionRef = useRef<HTMLDivElement>(null);
   const shouldReduceMotion = useReducedMotion();
@@ -178,8 +182,8 @@ export const AboutSection: FC = () => {
         {/* Gap between heading and text: gap-10 sm:gap-14 md:gap-16 */}
         <div className="mt-10 sm:mt-14 md:mt-16 mb-16 sm:mb-20 md:mb-24 flex flex-col items-center">
           <AnimatedText
-            text="I’m Arqam (Muhammed Arqam Khan), an entrepreneur and self-taught developer from Sahibganj, Jharkhand, India. I work across building technology products and digital solutions, running and developing offline businesses, and freelancing—building and selling websites to clients. Curious about how systems work, I’m interested in technology, reverse engineering, software development, and product building. I enjoy experimenting, breaking things to understand their underlying mechanisms, and learning by building real projects. Alongside my ventures, I’m currently in Class 12 at The Assembly of God Church School, Kolkata."
-            className="text-[#f2f2f0] font-medium text-center leading-relaxed max-w-[680px]"
+            text={ABOUT_TEXT}
+            className="text-[#f2f2f0] font-medium text-center leading-relaxed max-w-[720px]"
             style={{ fontSize: 'clamp(1rem, 2vw, 1.35rem)' }}
           />
         </div>

@@ -2,7 +2,7 @@
 
 > Official personal and professional portfolio of **Muhammed Arqam Khan (Arqam)** — Entrepreneur & Founder | Software Developer. Built with **React 19**, **TypeScript**, **TailwindCSS**, and **Framer Motion**.
 
-![Portfolio Preview](public/og-image.png)
+![Portfolio Preview](public/og-image.webp)
 
 ---
 
@@ -15,7 +15,12 @@
   3. Freelancing, website development, and selling websites to clients.
 * **Interactive 3D Liquid Dark UI**: Obsidian mirror finishes, specular sheens, scroll-reactive 3D elements, and responsive Swiss typography.
 * **120 FPS Dual-Row Social Marquee**: Hardware-composited social and contact cards linking directly to GitHub, X, LinkedIn, Telegram, Reddit, Founder/Professional Instagram (`@1m.btm`), Personal Instagram (`@notarqam`), and Email.
-* **Sticky Stacked Project Cards**: Showcasing active ventures, client projects, experimental concepts, and upcoming work with built-in obsidian mirror fallback slots ready for project screenshots.
+* **Sticky Stacked Project Cards (All WebP Visuals)**:
+  - `01` — **ALIF Billing Tool** (`Active Development` · `/projects/alif-billing-1..3.webp` · Private project toast notification)
+  - `02` — **ALIF Website** (`Active` · `/projects/alif-1..3.webp` · [https://aliflt.netlify.app/](https://aliflt.netlify.app/))
+  - `03` — **Ward Al Madinah** (`Client Project` · `/projects/ward-al-madinah-1..3.webp` · [https://wardalmadinah.pages.dev/](https://wardalmadinah.pages.dev/))
+  - `04` — **SayNO** (`Experimental / Pending` · `/projects/sayno-1..3.webp` · [https://saynoapp.webtree.workers.dev/](https://saynoapp.webtree.workers.dev/))
+  - `05` — **ASCOOL** (`Coming Soon` · `/projects/ascool-1..3.webp` · Upcoming project toast notification)
 
 ---
 
@@ -26,7 +31,7 @@
 * **Styling**: [TailwindCSS](https://tailwindcss.com/)
 * **Motion & Physics**: [Framer Motion](https://www.framer.com/motion/)
 * **Icons**: [Lucide React](https://lucide.dev/) + Custom SVG Vectors
-* **Image Optimization**: [Sharp](https://sharp.pixelplumbing.com/) (WebP pipeline)
+* **Image Optimization**: [Sharp](https://sharp.pixelplumbing.com/) (100% WebP pipeline)
 
 ---
 
@@ -47,30 +52,6 @@ Open `http://localhost:5174` in your browser.
 ```bash
 npm run build
 ```
-
----
-
-## 🖼️ Adding Project Images Later
-
-Each project card in `src/components/ProjectsSection.tsx` has three image slots (`col1Img1`, `col1Img2`, and `col2Img`). When an image slot is empty (`""` or omitted), it automatically renders an obsidian mirror placeholder card with the exact same aspect ratio and border radius.
-
-To add real project screenshots later:
-
-1. Place your `.webp` (or `.png` / `.jpg`) images inside `public/projects/` (for example: `public/projects/alif-billing-1.webp`, `public/projects/alif-billing-2.webp`, `public/projects/alif-billing-3.webp`).
-2. Open `src/components/ProjectsSection.tsx` and update the corresponding project entry in `projectsData`:
-   ```ts
-   {
-     number: "01",
-     name: "ALIF Billing Tool",
-     category: "Business Management Tool",
-     status: "Active Development",
-     description: "A billing and business management tool associated with ALIF.",
-     col1Img1: "/projects/alif-billing-1.webp", // Top-left slot
-     col1Img2: "/projects/alif-billing-2.webp", // Bottom-left slot
-     col2Img: "/projects/alif-billing-3.webp",  // Tall right slot
-   }
-   ```
-3. Optional: If you want to add a live URL button to a project card, add `link: "https://your-project-url.com"` to that project object in `projectsData`.
 
 ---
 

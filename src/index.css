@@ -14,6 +14,7 @@ html {
   background-color: #090909;
   color: #f2f2f0;
   font-family: 'Kanit', sans-serif;
+  scroll-behavior: smooth;
   overflow-x: clip;
   min-height: 100vh;
   -webkit-text-size-adjust: 100%;
