@@ -5,9 +5,10 @@
 
 PRAGMA foreign_keys = ON;
 
--- 1. Visitors Table: Anonymous first-party visitor profiles & attribution
+-- 1. Visitors Table: Anonymous first-party visitor profiles, ownership token hash & attribution
 CREATE TABLE IF NOT EXISTS visitors (
   visitor_id TEXT PRIMARY KEY,
+  visitor_token_hash TEXT NOT NULL,
   first_seen_at TEXT NOT NULL,
   last_seen_at TEXT NOT NULL,
   total_visits INTEGER NOT NULL DEFAULT 1,
@@ -25,7 +26,7 @@ CREATE TABLE IF NOT EXISTS visitors (
   last_touch_referrer_url TEXT,
   last_touch_at TEXT NOT NULL,
 
-  -- Latest device & browser fingerprint (non-identifying technical telemetry)
+  -- Latest device & browser metadata (non-identifying technical telemetry)
   device_type TEXT NOT NULL DEFAULT 'Desktop',
   os TEXT NOT NULL DEFAULT 'Unknown',
   os_version TEXT,
@@ -88,6 +89,7 @@ CREATE TABLE IF NOT EXISTS sessions (
 
 CREATE INDEX IF NOT EXISTS idx_sessions_visitor ON sessions(visitor_id, started_at DESC);
 CREATE INDEX IF NOT EXISTS idx_sessions_started ON sessions(started_at DESC);
+CREATE INDEX IF NOT EXISTS idx_sessions_last_activity ON sessions(last_activity_at);
 
 -- 3. Visits Table: Individual pageview & interaction events with deduplication
 CREATE TABLE IF NOT EXISTS visits (
@@ -129,6 +131,7 @@ CREATE TABLE IF NOT EXISTS visits (
 
 CREATE INDEX IF NOT EXISTS idx_visits_created_at ON visits(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_visits_visitor ON visits(visitor_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_visits_session ON visits(session_id);
 CREATE INDEX IF NOT EXISTS idx_visits_page_path ON visits(page_path);
 CREATE INDEX IF NOT EXISTS idx_visits_ref_campaign ON visits(ref_campaign);
 CREATE INDEX IF NOT EXISTS idx_visits_referrer_domain ON visits(referrer_domain);
@@ -143,10 +146,12 @@ CREATE TABLE IF NOT EXISTS location_consents (
   gps_accuracy_meters REAL,
   gps_timestamp TEXT,
   consent_notice_version TEXT NOT NULL DEFAULT 'v1.0',
-  created_at TEXT NOT NULL
+  created_at TEXT NOT NULL,
+  FOREIGN KEY (visitor_id) REFERENCES visitors(visitor_id) ON DELETE CASCADE
 );
 
 CREATE INDEX IF NOT EXISTS idx_location_consents_visitor ON location_consents(visitor_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_location_consents_created ON location_consents(created_at);
 
 -- 5. Referral Campaigns Table: Custom ?ref=campaign_name tracking links created by Admin
 CREATE TABLE IF NOT EXISTS referral_campaigns (
@@ -179,4 +184,23 @@ CREATE TABLE IF NOT EXISTS deletion_requests (
   action TEXT NOT NULL CHECK (action IN ('withdraw_gps', 'delete_all_data')),
   records_purged INTEGER NOT NULL DEFAULT 0,
   requested_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_deletion_requests_at ON deletion_requests(requested_at);
+
+-- 8. Rate Limits Table: Brute-force protection & endpoint rate limiting
+CREATE TABLE IF NOT EXISTS rate_limits (
+  rate_key TEXT PRIMARY KEY,
+  count INTEGER NOT NULL DEFAULT 1,
+  window_start TEXT NOT NULL,
+  locked_until TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_rate_limits_window ON rate_limits(window_start);
+
+-- 9. System Metadata Table: Tracks recurring retention cleanup timestamps
+CREATE TABLE IF NOT EXISTS system_metadata (
+  meta_key TEXT PRIMARY KEY,
+  meta_value TEXT NOT NULL,
+  updated_at TEXT NOT NULL
 );

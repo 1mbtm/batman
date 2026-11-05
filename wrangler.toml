@@ -4,13 +4,28 @@ compatibility_date = "2025-01-01"
 
 [vars]
 ANALYTICS_RETENTION_DAYS = "90"
+ALLOWED_ORIGIN = "https://batman-7y3.pages.dev"
 
-[[d1_databases]]
-binding = "DB"
-database_name = "arqam-portfolio-analytics"
-database_id = "00000000-0000-0000-0000-000000000000" # Replace with the ID returned by: npx wrangler d1 create arqam-portfolio-analytics
-migrations_dir = "migrations"
-
-# Required Cloudflare Pages Secrets (set via `npx wrangler pages secret put <NAME>` or Cloudflare Dashboard):
-# - ADMIN_PASSWORD: Strong password for the Private Admin Dashboard (/admin)
-# - ADMIN_TOKEN_SECRET: High-entropy secret string for signing admin tokens and salting IP hashes
+# ============================================================================
+# Cloudflare D1 Database Binding Setup (Manual Step Required Before Deploy)
+# ============================================================================
+# Do NOT commit a fake or placeholder database_id.
+#
+# 1. Create your D1 database in your Cloudflare account:
+#      npx wrangler d1 create arqam-portfolio-analytics
+#
+# 2. For Cloudflare Pages Production Deployment:
+#    Bind D1 in Cloudflare Dashboard -> Workers & Pages -> batman -> Settings
+#    -> Functions -> D1 database bindings:
+#      Variable name: DB
+#      D1 database:   arqam-portfolio-analytics
+#
+# 3. For Local CLI Development (`npx wrangler pages dev`) & CLI Migrations:
+#    Uncomment the [[d1_databases]] block below and paste the exact UUID
+#    returned by `npx wrangler d1 create arqam-portfolio-analytics`:
+#
+# [[d1_databases]]
+# binding = "DB"
+# database_name = "arqam-portfolio-analytics"
+# database_id = "<PASTE_YOUR_D1_DATABASE_UUID_HERE>"
+# migrations_dir = "migrations"

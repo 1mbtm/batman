@@ -1,6 +1,6 @@
 /**
  * Lightweight, privacy-first client-side analytics & attribution tracker.
- * - Uses anonymous first-party UUIDs (no third-party cookies or fingerprinting).
+ * - Uses anonymous first-party UUIDs + server-issued ownership tokens (`visitorToken`).
  * - Preserves first-touch and last-touch ?ref=campaign_name and referrer attribution.
  * - Never requests browser GPS coordinates unless the visitor explicitly clicks opt-in.
  */
@@ -23,6 +23,7 @@ export type GpsConsentState = 'unset' | 'granted' | 'denied' | 'withdrawn';
 
 const STORAGE_KEYS = {
   VISITOR_ID: 'arqam_analytics_visitor_id',
+  VISITOR_TOKEN: 'arqam_analytics_visitor_token',
   SESSION_ID: 'arqam_analytics_session_id',
   SESSION_TS: 'arqam_analytics_session_ts',
   FIRST_TOUCH: 'arqam_analytics_first_touch',
@@ -33,6 +34,8 @@ const STORAGE_KEYS = {
 } as const;
 
 const SESSION_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes
+const UUID_V4_REGEX =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const recentSentKeys = new Set<string>();
 
 function generateUuid(): string {
@@ -72,11 +75,15 @@ function safeRemoveLocal(key: string): void {
 
 export function getOrCreateVisitorId(): string {
   let id = safeGetLocal(STORAGE_KEYS.VISITOR_ID);
-  if (!id || id.length < 8) {
+  if (!id || !UUID_V4_REGEX.test(id)) {
     id = generateUuid();
     safeSetLocal(STORAGE_KEYS.VISITOR_ID, id);
   }
   return id;
+}
+
+export function getStoredVisitorToken(): string | null {
+  return safeGetLocal(STORAGE_KEYS.VISITOR_TOKEN);
 }
 
 export function getOrCreateSessionId(): string {
@@ -84,7 +91,7 @@ export function getOrCreateSessionId(): string {
   try {
     const existingId = window.sessionStorage.getItem(STORAGE_KEYS.SESSION_ID);
     const lastTs = Number(window.sessionStorage.getItem(STORAGE_KEYS.SESSION_TS) || '0');
-    if (existingId && now - lastTs < SESSION_TIMEOUT_MS) {
+    if (existingId && UUID_V4_REGEX.test(existingId) && now - lastTs < SESSION_TIMEOUT_MS) {
       window.sessionStorage.setItem(STORAGE_KEYS.SESSION_TS, String(now));
       return existingId;
     }
@@ -109,10 +116,19 @@ export function parseReferrerInfo(): { referrerDomain: string | null; referrerUr
       return { referrerDomain: null, referrerUrl: null };
     }
     const cleanDomain = refUrl.hostname.replace(/^www\./i, '').toLowerCase();
-    // Redact paths on social platforms that might contain user profile handles, keeping only origin + non-identifying path
-    const socialHosts = ['instagram.com', 'x.com', 'twitter.com', 'facebook.com', 't.me', 'linkedin.com', 'reddit.com'];
+    const socialHosts = [
+      'instagram.com',
+      'x.com',
+      'twitter.com',
+      'facebook.com',
+      't.me',
+      'linkedin.com',
+      'reddit.com',
+    ];
     const isSocial = socialHosts.some((h) => cleanDomain === h || cleanDomain.endsWith(`.${h}`));
-    const safeUrl = isSocial ? `${refUrl.protocol}//${refUrl.hostname}/` : `${refUrl.origin}${refUrl.pathname}`;
+    const safeUrl = isSocial
+      ? `${refUrl.protocol}//${refUrl.hostname}/`
+      : `${refUrl.origin}${refUrl.pathname}`;
     return {
       referrerDomain: cleanDomain,
       referrerUrl: safeUrl.slice(0, 512),
@@ -168,7 +184,6 @@ export function resolveAttribution(): {
     };
     safeSetLocal(STORAGE_KEYS.FIRST_TOUCH, JSON.stringify(firstTouch));
   } else if (!firstTouch.ref && currentRef) {
-    // If visitor initially arrived direct and now clicks a ?ref= campaign for the first time, record their first campaign ref
     firstTouch = {
       ...firstTouch,
       ref: currentRef,
@@ -217,7 +232,6 @@ export function detectDeviceAndBrowser(): {
 } {
   const ua = navigator.userAgent || '';
 
-  // 1. Device Type
   const isTablet =
     /iPad|Tablet|PlayBook|Silk/i.test(ua) ||
     (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1) ||
@@ -230,7 +244,6 @@ export function detectDeviceAndBrowser(): {
     ? 'Mobile'
     : 'Desktop';
 
-  // 2. Operating System & Version
   let os = 'Unknown';
   let osVersion: string | null = null;
   if (/Windows NT ([0-9.]+)/i.test(ua)) {
@@ -252,7 +265,6 @@ export function detectDeviceAndBrowser(): {
     os = 'Linux';
   }
 
-  // 3. Browser & Version
   let browser = 'Unknown';
   let browserVersion: string | null = null;
   if (/EdgA?\/([0-9.]+)/i.test(ua)) {
@@ -327,13 +339,22 @@ export function setLocationPromptDismissed(dismissed: boolean): void {
   }
 }
 
+function buildVisitorAuthHeaders(): Record<string, string> {
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  const token = getStoredVisitorToken();
+  if (token) {
+    headers['X-Visitor-Token'] = token;
+  }
+  return headers;
+}
+
 export async function trackPageVisit(customPath?: string): Promise<void> {
   if (typeof window === 'undefined') return;
   const pagePath = customPath || `${window.location.pathname}${window.location.hash || ''}`;
-  // Do not pollute visitor analytics with admin dashboard views
   if (pagePath.startsWith('/admin') || pagePath.startsWith('/#admin')) return;
 
   const visitorId = getOrCreateVisitorId();
+  const visitorToken = getStoredVisitorToken();
   const sessionId = getOrCreateSessionId();
   const minuteBucket = new Date().toISOString().slice(0, 16);
   const idempotencyKey = `${visitorId}:${sessionId}:${pagePath}:${minuteBucket}`;
@@ -348,6 +369,7 @@ export async function trackPageVisit(customPath?: string): Promise<void> {
 
   const payload = {
     visitorId,
+    visitorToken,
     sessionId,
     idempotencyKey,
     pagePath,
@@ -359,7 +381,6 @@ export async function trackPageVisit(customPath?: string): Promise<void> {
     firstTouchReferrerDomain: attribution.firstTouch.referrerDomain,
     firstTouchReferrerUrl: attribution.firstTouch.referrerUrl,
     ...device,
-    gpsConsentGranted: Boolean(storedGps && consentState === 'granted'),
     gpsLatitude: storedGps?.latitude ?? null,
     gpsLongitude: storedGps?.longitude ?? null,
     gpsAccuracyMeters: storedGps?.accuracyMeters ?? null,
@@ -367,12 +388,26 @@ export async function trackPageVisit(customPath?: string): Promise<void> {
   };
 
   try {
-    await fetch('/api/analytics/collect', {
+    const res = await fetch('/api/analytics/collect', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: buildVisitorAuthHeaders(),
+      credentials: 'same-origin',
       body: JSON.stringify(payload),
       keepalive: true,
     });
+    if (res.ok) {
+      const data = (await res.json().catch(() => null)) as {
+        visitorId?: string;
+        sessionId?: string;
+        visitorToken?: string;
+      } | null;
+      if (data?.visitorId && UUID_V4_REGEX.test(data.visitorId)) {
+        safeSetLocal(STORAGE_KEYS.VISITOR_ID, data.visitorId);
+      }
+      if (data?.visitorToken) {
+        safeSetLocal(STORAGE_KEYS.VISITOR_TOKEN, data.visitorToken);
+      }
+    }
   } catch {
     // Fail silently so portfolio UX is never disrupted
   }
@@ -393,7 +428,7 @@ export async function requestAndRecordGpsLocation(): Promise<{
         const coords: GpsCoordinatesPayload = {
           latitude: Number(pos.coords.latitude.toFixed(6)),
           longitude: Number(pos.coords.longitude.toFixed(6)),
-          accuracyMeters: Math.round(pos.coords.accuracy || 0),
+          accuracyMeters: Math.max(1, Math.round(pos.coords.accuracy || 10)),
           timestamp: new Date(pos.timestamp || Date.now()).toISOString(),
         };
         safeSetLocal(STORAGE_KEYS.GPS_CONSENT, 'granted');
@@ -401,12 +436,15 @@ export async function requestAndRecordGpsLocation(): Promise<{
         setLocationPromptDismissed(true);
 
         const visitorId = getOrCreateVisitorId();
+        const visitorToken = getStoredVisitorToken();
         try {
           await fetch('/api/analytics/consent', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: buildVisitorAuthHeaders(),
+            credentials: 'same-origin',
             body: JSON.stringify({
               visitorId,
+              visitorToken,
               action: 'granted',
               gpsLatitude: coords.latitude,
               gpsLongitude: coords.longitude,
@@ -425,12 +463,15 @@ export async function requestAndRecordGpsLocation(): Promise<{
         setLocationPromptDismissed(true);
 
         const visitorId = getOrCreateVisitorId();
+        const visitorToken = getStoredVisitorToken();
         try {
           await fetch('/api/analytics/consent', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: buildVisitorAuthHeaders(),
+            credentials: 'same-origin',
             body: JSON.stringify({
               visitorId,
+              visitorToken,
               action: 'denied',
             }),
           });
@@ -460,12 +501,15 @@ export async function declineGpsLocation(): Promise<void> {
   setLocationPromptDismissed(true);
 
   const visitorId = getOrCreateVisitorId();
+  const visitorToken = getStoredVisitorToken();
   try {
     await fetch('/api/analytics/consent', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: buildVisitorAuthHeaders(),
+      credentials: 'same-origin',
       body: JSON.stringify({
         visitorId,
+        visitorToken,
         action: 'denied',
       }),
     });
@@ -476,23 +520,26 @@ export async function declineGpsLocation(): Promise<void> {
 
 export async function withdrawGpsConsent(): Promise<{ ok: boolean; message: string }> {
   const visitorId = getOrCreateVisitorId();
+  const visitorToken = getStoredVisitorToken();
   safeSetLocal(STORAGE_KEYS.GPS_CONSENT, 'withdrawn');
   safeRemoveLocal(STORAGE_KEYS.GPS_COORDS);
 
   try {
     const res = await fetch('/api/analytics/privacy', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: buildVisitorAuthHeaders(),
+      credentials: 'same-origin',
       body: JSON.stringify({
         visitorId,
+        visitorToken,
         action: 'withdraw_gps',
       }),
     });
-    const data = (await res.json().catch(() => ({}))) as { message?: string };
+    const data = (await res.json().catch(() => ({}))) as { message?: string; error?: string };
     return {
       ok: res.ok,
       message:
-        data.message || 'GPS consent withdrawn and stored GPS coordinates cleared.',
+        data.message || data.error || 'GPS consent withdrawn and stored GPS coordinates cleared.',
     };
   } catch {
     return {
@@ -504,33 +551,41 @@ export async function withdrawGpsConsent(): Promise<{ ok: boolean; message: stri
 
 export async function deleteAllVisitorAnalyticsData(): Promise<{ ok: boolean; message: string }> {
   const visitorId = getOrCreateVisitorId();
+  const visitorToken = getStoredVisitorToken();
   try {
     const res = await fetch('/api/analytics/privacy', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: buildVisitorAuthHeaders(),
+      credentials: 'same-origin',
       body: JSON.stringify({
         visitorId,
+        visitorToken,
         action: 'delete_all_data',
       }),
     });
-    const data = (await res.json().catch(() => ({}))) as { message?: string };
+    const data = (await res.json().catch(() => ({}))) as { message?: string; error?: string };
 
-    safeRemoveLocal(STORAGE_KEYS.VISITOR_ID);
-    safeRemoveLocal(STORAGE_KEYS.FIRST_TOUCH);
-    safeRemoveLocal(STORAGE_KEYS.LAST_TOUCH);
-    safeRemoveLocal(STORAGE_KEYS.GPS_CONSENT);
-    safeRemoveLocal(STORAGE_KEYS.GPS_COORDS);
-    try {
-      window.sessionStorage.removeItem(STORAGE_KEYS.SESSION_ID);
-      window.sessionStorage.removeItem(STORAGE_KEYS.SESSION_TS);
-    } catch {
-      // Ignore
+    if (res.ok) {
+      safeRemoveLocal(STORAGE_KEYS.VISITOR_ID);
+      safeRemoveLocal(STORAGE_KEYS.VISITOR_TOKEN);
+      safeRemoveLocal(STORAGE_KEYS.FIRST_TOUCH);
+      safeRemoveLocal(STORAGE_KEYS.LAST_TOUCH);
+      safeRemoveLocal(STORAGE_KEYS.GPS_CONSENT);
+      safeRemoveLocal(STORAGE_KEYS.GPS_COORDS);
+      try {
+        window.sessionStorage.removeItem(STORAGE_KEYS.SESSION_ID);
+        window.sessionStorage.removeItem(STORAGE_KEYS.SESSION_TS);
+      } catch {
+        // Ignore
+      }
     }
 
     return {
       ok: res.ok,
       message:
-        data.message || 'All visitor, session, and location analytics data for your browser has been deleted.',
+        data.message ||
+        data.error ||
+        'All visitor, session, and location analytics data for your browser has been deleted.',
     };
   } catch {
     return {

@@ -1,0 +1,19 @@
+name = "arqam-portfolio-retention-cron"
+main = "workers/retention-cron.ts"
+compatibility_date = "2025-01-01"
+
+[vars]
+ANALYTICS_RETENTION_DAYS = "90"
+
+# Run automated retention cleanup every day at 03:00 UTC
+[triggers]
+crons = ["0 3 * * *"]
+
+# After running `npx wrangler d1 create arqam-portfolio-analytics`, uncomment
+# the block below, set `database_id` to your real D1 UUID, and deploy with:
+#   npx wrangler deploy --config wrangler.cron.toml
+#
+# [[d1_databases]]
+# binding = "DB"
+# database_name = "arqam-portfolio-analytics"
+# database_id = "<PASTE_YOUR_D1_DATABASE_UUID_HERE>"
