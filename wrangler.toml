@@ -1,0 +1,16 @@
+name = "arqam-portfolio"
+pages_build_output_dir = "dist"
+compatibility_date = "2025-01-01"
+
+[vars]
+ANALYTICS_RETENTION_DAYS = "90"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "arqam-portfolio-analytics"
+database_id = "00000000-0000-0000-0000-000000000000" # Replace with the ID returned by: npx wrangler d1 create arqam-portfolio-analytics
+migrations_dir = "migrations"
+
+# Required Cloudflare Pages Secrets (set via `npx wrangler pages secret put <NAME>` or Cloudflare Dashboard):
+# - ADMIN_PASSWORD: Strong password for the Private Admin Dashboard (/admin)
+# - ADMIN_TOKEN_SECRET: High-entropy secret string for signing admin tokens and salting IP hashes

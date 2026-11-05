@@ -1,5 +1,7 @@
 # Known SPA & Static Trust-Anchor Paths
 /                 /index.html   200
+/admin            /index.html   200
+/admin/*          /index.html   200
 /about            /about/index.html   200
 /contact          /contact/index.html   200
 /privacy          /privacy/index.html   200
@@ -13,7 +15,7 @@
 /api/v1/services  /api/v1/services.json  200
 /api/v1/contact   /api/v1/contact.json   200
 
-# API catch-all: real HTTP 404 with RFC 9457 Problem JSON
+# API catch-all for static fallback (Note: /api/analytics/* is handled by Cloudflare Pages Functions before _redirects)
 /api/*            /error.json   404
 
 # Catch-all: real HTTP 404 with markdown recovery body for unknown web paths

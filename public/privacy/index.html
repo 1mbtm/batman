@@ -3,8 +3,8 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Privacy Policy — Arqam | Muhammed Arqam Khan</title>
-  <meta name="description" content="Privacy policy for batman-7y3.pages.dev — the personal and professional portfolio of Muhammed Arqam Khan (Arqam)." />
+  <title>Privacy Notice — Arqam | Muhammed Arqam Khan</title>
+  <meta name="description" content="Privacy notice and visitor analytics data policy for batman-7y3.pages.dev — the personal and professional portfolio of Muhammed Arqam Khan (Arqam)." />
   <link rel="canonical" href="https://batman-7y3.pages.dev/privacy" />
   <link rel="icon" type="image/webp" href="/favicon.webp" />
   <style>
@@ -14,12 +14,12 @@
     nav a{color:#f2f2f0;text-decoration:none;font-size:0.85rem;text-transform:uppercase;letter-spacing:0.1em;opacity:0.7;transition:opacity 0.2s}
     nav a:hover{opacity:1}
     nav .brand{font-weight:800;font-size:1rem;opacity:1;letter-spacing:0.05em}
-    main{max-width:720px;margin:0 auto;padding:4rem 2rem 6rem}
+    main{max-width:760px;margin:0 auto;padding:4rem 2rem 6rem}
     h1{font-size:clamp(2rem,6vw,3.5rem);font-weight:900;text-transform:uppercase;line-height:1;letter-spacing:-0.02em;margin-bottom:1.5rem}
     h2{font-size:1rem;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;color:#b8b8b8;margin:2rem 0 0.6rem}
-    p{color:#d0d0cc;font-size:0.95rem;margin-bottom:0.9rem;max-width:640px}
+    p{color:#d0d0cc;font-size:0.95rem;margin-bottom:0.9rem;max-width:680px}
     ul{color:#d0d0cc;font-size:0.95rem;padding-left:1.25rem;margin-bottom:0.9rem}
-    li{margin-bottom:0.35rem}
+    li{margin-bottom:0.4rem}
     a.link{color:#f2f2f0;border-bottom:1px solid rgba(255,255,255,0.25);text-decoration:none}
     footer{padding:2rem;text-align:center;font-size:0.75rem;color:#666;border-top:1px solid rgba(255,255,255,0.06);text-transform:uppercase;letter-spacing:0.1em}
     .date{font-size:0.8rem;color:#888;margin-bottom:2rem;text-transform:uppercase;letter-spacing:0.08em}
@@ -35,69 +35,53 @@
   </nav>
 
   <main>
-    <h1>Privacy Policy</h1>
-    <p class="date">Last updated: 2 November 2026</p>
+    <h1>Privacy Notice</h1>
+    <p class="date">Last updated: 3 November 2026</p>
 
     <p>
-      This privacy policy describes how <strong>batman-7y3.pages.dev</strong> — the personal and
-      professional portfolio of <strong>Muhammed Arqam Khan (Arqam)</strong> — collects, uses, and
-      protects any information relating to visitors of this site.
+      This privacy notice explains how <strong>batman-7y3.pages.dev</strong> — the personal and
+      professional portfolio of <strong>Muhammed Arqam Khan (Arqam)</strong> — handles first-party
+      visitor analytics, optional GPS location consent, referral attribution, and visitor data rights.
     </p>
 
-    <h2>Information we collect</h2>
+    <h2>1. First-Party Visitor Analytics</h2>
     <p>
-      This site is a static portfolio website. We do not operate a registration system, user
-      accounts, or a login flow. The following minimal data may be processed:
+      This portfolio uses a lightweight, self-hosted analytics system powered by Cloudflare Pages
+      Functions and Cloudflare D1. We do not use third-party advertising trackers or sell visitor data.
+      The following non-identifying telemetry is collected:
     </p>
     <ul>
-      <li>
-        <strong>Server logs</strong> — Cloudflare Pages (our hosting provider) automatically logs
-        standard HTTP request metadata including IP address, request path, user agent, and
-        timestamp. These logs are managed by Cloudflare under their own privacy policy.
-      </li>
-      <li>
-        <strong>Contact email</strong> — If you contact the site owner via email at
-        1m.btmnnn@gmail.com, your email address and the contents of your message are processed
-        and stored by Gmail (Google LLC).
-      </li>
+      <li><strong>Anonymous Visitor &amp; Session IDs</strong> — Randomly generated first-party UUIDs stored in your browser to estimate unique visitors, sessions, and first/last visit timestamps.</li>
+      <li><strong>Page Views &amp; Referral Attribution</strong> — Visited page paths, referrer domain/URL, and optional campaign parameters (such as <code>?ref=campaign_name</code>) for first-touch and last-touch attribution. We never attempt to identify visitors' social media usernames.</li>
+      <li><strong>Device &amp; Browser Metadata</strong> — Form factor (Mobile, Desktop, or Tablet), operating system, browser name and version, and screen/viewport dimensions.</li>
     </ul>
 
-    <h2>Cookies and tracking</h2>
-    <p>
-      This site does not set first-party cookies. No cross-site tracking or advertising cookies
-      are used. Cloudflare may set its own cookies for performance and security purposes; these
-      are governed by Cloudflare's privacy policy.
-    </p>
-
-    <h2>Third-party services</h2>
+    <h2>2. Location Tracking: Optional GPS Consent vs. IP Estimates</h2>
     <ul>
-      <li><strong>Cloudflare Pages</strong> — Hosting and CDN. <a class="link" href="https://www.cloudflare.com/privacypolicy/" target="_blank" rel="noopener">Cloudflare Privacy Policy</a></li>
-      <li><strong>Google Fonts</strong> — Web fonts loaded from fonts.googleapis.com.</li>
+      <li><strong>No GPS Collection Without Explicit Permission</strong> — Browser GPS coordinates (latitude, longitude, GPS accuracy in meters, and timestamp) are collected <strong>only</strong> if you explicitly click to opt in and grant browser geolocation permission. Your consent timestamp is recorded in our audit log.</li>
+      <li><strong>Approximate IP-Based Geolocation Fallback</strong> — When GPS permission is not granted, the server reads Cloudflare edge network headers to estimate approximate country, state/region, city, and postal code. IP-based location is an approximate network estimate only and is never treated or presented as an exact physical location.</li>
+      <li><strong>No Raw IP Storage</strong> — Raw IP addresses are processed server-side and are never permanently stored in our database. Only a daily-rotated, salted one-way hash is used transiently for security and deduplication.</li>
     </ul>
 
-    <h2>Data retention</h2>
+    <h2>3. Consent Withdrawal &amp; Data Deletion Rights</h2>
     <p>
-      We do not store personal data beyond what is collected by the third-party services listed
-      above. Contact emails are retained only as long as necessary to respond.
+      You can withdraw your GPS consent or delete all analytics records associated with your browser at
+      any time:
+    </p>
+    <ul>
+      <li>Open <strong>Location &amp; Data Settings</strong> in the portfolio footer on the <a class="link" href="/">homepage</a> and click <strong>Withdraw GPS Consent</strong> (which immediately clears your stored GPS coordinates and reverts to approximate IP-only mode) or <strong>Delete My Analytics Data</strong> (which permanently deletes your visitor record, sessions, page visits, and location consent history from our database).</li>
+      <li>Alternatively, you may email <a class="link" href="mailto:1m.btmnnn@gmail.com">1m.btmnnn@gmail.com</a> to request data deletion.</li>
+    </ul>
+
+    <h2>4. Data Retention Period</h2>
+    <p>
+      Analytics visit and session records are retained for a configurable period of <strong>90 days</strong>
+      by default (<code>ANALYTICS_RETENTION_DAYS=90</code>), after which expired records are automatically purged.
     </p>
 
-    <h2>Your rights</h2>
+    <h2>5. Contact</h2>
     <p>
-      You have the right to request access to, correction of, or deletion of any personal data
-      held about you. To exercise these rights, contact us at
-      <a class="link" href="mailto:1m.btmnnn@gmail.com">1m.btmnnn@gmail.com</a>.
-    </p>
-
-    <h2>Changes to this policy</h2>
-    <p>
-      We may update this privacy policy from time to time. The "last updated" date at the top of
-      this page will reflect any changes. Continued use of the site constitutes acceptance of the
-      current policy.
-    </p>
-
-    <h2>Contact</h2>
-    <p>
-      For privacy-related enquiries, contact Arqam at
+      For privacy-related questions or deletion requests, contact Arqam at
       <a class="link" href="mailto:1m.btmnnn@gmail.com">1m.btmnnn@gmail.com</a>.
     </p>
   </main>

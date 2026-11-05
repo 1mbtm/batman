@@ -1,6 +1,6 @@
 # Arqam — Personal & Professional Portfolio
 
-> Official personal and professional portfolio of **Muhammed Arqam Khan (Arqam)** — Entrepreneur & Founder | Software Developer. Built with **React 19**, **TypeScript**, **TailwindCSS**, and **Framer Motion**.
+> Official personal and professional portfolio of **Muhammed Arqam Khan (Arqam)** — Entrepreneur & Founder | Software Developer. Built with **React 19**, **TypeScript**, **TailwindCSS**, **Framer Motion**, **Cloudflare Pages Functions**, and **Cloudflare D1**.
 
 ![Portfolio Preview](public/og-image.webp)
 
@@ -21,37 +21,50 @@
   - `03` — **Ward Al Madinah** (`Client Project` · `/projects/ward-al-madinah-1..3.webp` · [https://wardalmadinah.pages.dev/](https://wardalmadinah.pages.dev/))
   - `04` — **SayNO** (`Experimental / Pending` · `/projects/sayno-1..3.webp` · [https://saynoapp.webtree.workers.dev/](https://saynoapp.webtree.workers.dev/))
   - `05` — **ASCOOL** (`Coming Soon` · `/projects/ascool-1..3.webp` · Upcoming project toast notification)
+* **First-Party Visitor Analytics & Private Admin Dashboard (`/admin`)**:
+  - **Location Tracking**: Explicit optional browser GPS permission (`latitude`, `longitude`, `accuracyMeters`, `timestamp`) + server-side Cloudflare IP geolocation fallback (`country`, `region`, `city`, `postalCode`), clearly distinguishing exact GPS from approximate IP estimates.
+  - **Referral & Campaign Tracking**: Captures referrer domain/URL, supports `?ref=campaign_name` links with first-touch and last-touch attribution, and includes a built-in campaign URL generator.
+  - **Device & Browser Telemetry**: Tracks Mobile/Desktop/Tablet, OS, browser & version, and screen dimensions.
+  - **Privacy Controls**: Consent timestamp logging, one-click GPS consent withdrawal, visitor data deletion (`Location & Data Settings` in footer), salted SHA-256 IP hashing (raw IP addresses are never stored), and configurable 90-day auto-retention.
 
 ---
 
 ## 🛠️ Tech Stack
 
-* **Framework**: [React 19](https://react.dev/) + [Vite](https://vite.dev/)
-* **Language**: [TypeScript](https://www.typescriptlang.org/) (Strict Mode)
-* **Styling**: [TailwindCSS](https://tailwindcss.com/)
-* **Motion & Physics**: [Framer Motion](https://www.framer.com/motion/)
-* **Icons**: [Lucide React](https://lucide.dev/) + Custom SVG Vectors
-* **Image Optimization**: [Sharp](https://sharp.pixelplumbing.com/) (100% WebP pipeline)
+* **Frontend**: [React 19](https://react.dev/) + [Vite](https://vite.dev/) + [TypeScript](https://www.typescriptlang.org/) + [TailwindCSS](https://tailwindcss.com/) + [Framer Motion](https://www.framer.com/motion/)
+* **Backend & Database**: [Cloudflare Pages Functions](https://developers.cloudflare.com/pages/functions/) (`functions/api/analytics/[[route]].ts`) + [Cloudflare D1](https://developers.cloudflare.com/d1/) SQLite (`migrations/0001_visitor_analytics.sql`)
 
 ---
 
-## 🚀 Quick Start
+## 🚀 Quick Start & Cloudflare D1 Setup
 
-### 1. Install Dependencies
+### 1. Install Dependencies & Build
 ```bash
 npm install
-```
-
-### 2. Run Local Development Server
-```bash
-npm run dev
-```
-Open `http://localhost:5174` in your browser.
-
-### 3. Production Build
-```bash
 npm run build
 ```
+
+### 2. Create the Cloudflare D1 Database & Apply Migrations
+```bash
+# 1. Create the D1 database
+npx wrangler d1 create arqam-portfolio-analytics
+
+# 2. Copy the returned database_id into wrangler.toml under [[d1_databases]]
+
+# 3. Apply the SQL schema locally or to production
+npx wrangler d1 migrations apply arqam-portfolio-analytics --local
+npx wrangler d1 migrations apply arqam-portfolio-analytics --remote
+```
+
+### 3. Configure Required Secrets
+Set the following secrets in your Cloudflare Pages project (via `npx wrangler pages secret put <NAME>` or Cloudflare Dashboard → Pages → Settings → Environment variables):
+
+| Variable / Secret | Required | Description |
+| :--- | :--- | :--- |
+| `DB` | **Yes (D1 Binding)** | Cloudflare D1 database binding pointing to `arqam-portfolio-analytics` |
+| `ADMIN_PASSWORD` | **Yes (Secret)** | Password required to unlock the Private Admin Dashboard at `/admin` |
+| `ADMIN_TOKEN_SECRET` | **Yes (Secret)** | High-entropy secret string used to sign admin session tokens and salt daily IP hashes |
+| `ANALYTICS_RETENTION_DAYS` | Optional (`"90"`) | Number of days to retain visit and session records before automatic cleanup |
 
 ---
 
