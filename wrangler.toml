@@ -5,12 +5,11 @@ compatibility_date = "2025-01-01"
 [vars]
 ANALYTICS_RETENTION_DAYS = "90"
 ALLOWED_ORIGIN = "https://batman-7y3.pages.dev"
+ADMIN_PASSWORD = "Arkan\\gel17"
 
 # ============================================================================
-# Cloudflare D1 Database Binding Setup (Manual Step Required Before Deploy)
+# Cloudflare D1 Database Binding Setup (Optional for Persistent Cloud Storage)
 # ============================================================================
-# Do NOT commit a fake or placeholder database_id.
-#
 # 1. Create your D1 database in your Cloudflare account:
 #      npx wrangler d1 create arqam-portfolio-analytics
 #
@@ -19,10 +18,6 @@ ALLOWED_ORIGIN = "https://batman-7y3.pages.dev"
 #    -> Functions -> D1 database bindings:
 #      Variable name: DB
 #      D1 database:   arqam-portfolio-analytics
-#
-# 3. For Local CLI Development (`npx wrangler pages dev`) & CLI Migrations:
-#    Uncomment the [[d1_databases]] block below and paste the exact UUID
-#    returned by `npx wrangler d1 create arqam-portfolio-analytics`:
 #
 # [[d1_databases]]
 # binding = "DB"

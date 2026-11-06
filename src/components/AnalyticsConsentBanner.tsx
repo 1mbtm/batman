@@ -17,13 +17,11 @@ import {
 interface AnalyticsConsentBannerProps {
   isOpenModal: boolean;
   onCloseModal: () => void;
-  onOpenAdmin?: () => void;
 }
 
 export const AnalyticsConsentBanner: FC<AnalyticsConsentBannerProps> = ({
   isOpenModal,
   onCloseModal,
-  onOpenAdmin,
 }) => {
   const [showFloatingPrompt, setShowFloatingPrompt] = useState(false);
   const [consentState, setConsentState] = useState<GpsConsentState>('unset');
@@ -41,7 +39,7 @@ export const AnalyticsConsentBanner: FC<AnalyticsConsentBannerProps> = ({
     if (currentConsent === 'unset' && !isLocationPromptDismissed()) {
       const timer = window.setTimeout(() => {
         setShowFloatingPrompt(true);
-      }, 1500);
+      }, 1200);
       return () => window.clearTimeout(timer);
     }
   }, []);
@@ -61,20 +59,17 @@ export const AnalyticsConsentBanner: FC<AnalyticsConsentBannerProps> = ({
     setConsentState(getStoredGpsConsent());
     setCoords(getStoredGpsCoords());
     if (res.ok && res.coords) {
-      showTempFeedback(
-        `Exact GPS shared (±${res.coords.accuracyMeters}m accuracy). You can withdraw consent anytime.`
-      );
+      showTempFeedback('Location enabled. You can update or withdraw permission anytime in Location Settings.');
     } else if (res.error) {
       showTempFeedback(res.error);
     }
   };
 
-  const handleContinueIpOnly = async () => {
+  const handleNotNow = async () => {
     await declineGpsLocation();
     setShowFloatingPrompt(false);
     setConsentState('denied');
     setCoords(null);
-    showTempFeedback('Continuing with approximate IP-based region estimates only.');
   };
 
   const handleWithdrawGps = async () => {
@@ -98,69 +93,107 @@ export const AnalyticsConsentBanner: FC<AnalyticsConsentBannerProps> = ({
 
   return (
     <>
-      {/* 1. Optional Non-Intrusive Bottom-Right GPS Consent Prompt */}
+      {/* 1. Prominent, Non-Blocking Dark Liquid-Mirror Location Permission Card */}
       <AnimatePresence>
         {showFloatingPrompt && !isOpenModal && (
-          <motion.div
-            role="dialog"
-            aria-label="Optional Location Sharing Consent"
-            initial={{ opacity: 0, y: 24, scale: 0.96 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: 16, scale: 0.96 }}
-            transition={{ duration: 0.25 }}
-            className="fixed bottom-4 right-4 sm:bottom-6 sm:right-6 z-40 w-[calc(100vw-2rem)] max-w-sm rounded-3xl bg-[#111111]/95 border border-[#e0dfdb]/25 p-4 sm:p-5 text-[#f2f2f0] backdrop-blur-xl shadow-2xl"
-          >
-            <div className="flex items-start justify-between gap-3 mb-2">
-              <div className="flex items-center gap-2">
-                <span className="w-2 h-2 rounded-full bg-[#e0dfdb]" />
-                <span className="font-mono text-[10px] sm:text-xs uppercase tracking-widest text-[#b8b8b8]">
-                  OPTIONAL TELEMETRY
-                </span>
+          <div className="fixed bottom-4 inset-x-4 sm:inset-x-auto sm:bottom-6 sm:right-6 z-40 pointer-events-none flex justify-center sm:justify-end">
+            <motion.div
+              role="dialog"
+              aria-label="Turn on location for a better experience"
+              initial={{ opacity: 0, y: 28, scale: 0.96 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 18, scale: 0.96 }}
+              transition={{ duration: 0.28, ease: [0.16, 1, 0.3, 1] }}
+              className="pointer-events-auto relative overflow-hidden w-full max-w-[420px] rounded-[28px] sm:rounded-[32px] bg-gradient-to-b from-[#1e1e1e] via-[#141414] to-[#0b0b0b] border-2 border-[#e0dfdb]/45 p-5 sm:p-6 text-[#f2f2f0] backdrop-blur-2xl shadow-[0_24px_64px_rgba(0,0,0,0.92),0_0_32px_rgba(255,255,255,0.08)]"
+            >
+              {/* Subtle specular liquid-mirror highlight */}
+              <div
+                className="absolute inset-0 pointer-events-none opacity-80"
+                style={{
+                  background:
+                    'linear-gradient(135deg, rgba(255,255,255,0.12) 0%, transparent 45%, rgba(255,255,255,0.04) 70%, transparent 100%)',
+                }}
+              />
+
+              <div className="relative z-10">
+                {/* Top Header Row: Location Pin Icon + Optional Badge + Dismiss Button */}
+                <div className="flex items-center justify-between gap-3 mb-4">
+                  <div className="flex items-center gap-3">
+                    <div className="w-11 h-11 rounded-2xl bg-[#f2f2f0]/10 border border-[#e0dfdb]/35 flex items-center justify-center shrink-0 shadow-inner">
+                      <svg
+                        className="w-5 h-5 text-[#f2f2f0]"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        aria-hidden="true"
+                      >
+                        <path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z" />
+                        <circle cx="12" cy="10" r="3" />
+                      </svg>
+                    </div>
+                    <span className="inline-flex items-center rounded-full border border-[#e0dfdb]/25 bg-white/5 px-3 py-1 font-mono text-[10px] uppercase tracking-widest text-[#e0dfdb]">
+                      Optional · Location
+                    </span>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={handleNotNow}
+                    aria-label="Close location prompt"
+                    className="w-8 h-8 rounded-full border border-white/15 flex items-center justify-center text-xs font-mono text-[#b8b8b8] hover:text-white hover:border-white/40 transition-colors cursor-pointer"
+                  >
+                    ✕
+                  </button>
+                </div>
+
+                {/* Friendly Heading & Concise Explanation */}
+                <h3 className="text-base sm:text-lg font-bold tracking-tight text-[#f2f2f0] leading-snug mb-1.5">
+                  Turn on location for a better experience
+                </h3>
+                <p className="text-xs sm:text-sm text-[#f2f2f0]/80 font-light leading-relaxed mb-5">
+                  Help us understand where visitors are discovering my portfolio.
+                </p>
+
+                {/* Primary & Secondary Action Buttons */}
+                <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 sm:gap-3">
+                  <button
+                    type="button"
+                    disabled={isLoading}
+                    onClick={handleEnableGps}
+                    className="flex-1 rounded-full font-bold uppercase tracking-widest text-[#090909] px-5 py-3 text-xs sm:text-sm liquid-chrome-btn cursor-pointer text-center"
+                  >
+                    <span className="relative z-10">
+                      {isLoading ? 'Requesting…' : 'Enable Location'}
+                    </span>
+                  </button>
+
+                  <button
+                    type="button"
+                    disabled={isLoading}
+                    onClick={handleNotNow}
+                    className="sm:w-auto rounded-full border-2 border-[#e0dfdb]/40 bg-[#161616] text-[#f2f2f0] font-medium uppercase tracking-widest px-5 py-2.5 sm:py-3 text-xs sm:text-sm hover:bg-white/10 hover:border-[#f2f2f0] transition-colors cursor-pointer text-center"
+                  >
+                    Not now
+                  </button>
+                </div>
+
+                {/* Subtle Privacy Footer */}
+                <div className="mt-3.5 pt-3 border-t border-white/10 flex items-center justify-between text-[11px] font-mono text-[#b8b8b8]/75">
+                  <span>Browser GPS is only requested if you enable</span>
+                  <a href="/privacy" className="underline hover:text-[#f2f2f0] shrink-0 ml-2">
+                    Privacy
+                  </a>
+                </div>
               </div>
-              <button
-                type="button"
-                onClick={handleContinueIpOnly}
-                aria-label="Dismiss location prompt"
-                className="text-xs font-mono uppercase tracking-widest text-[#b8b8b8]/70 hover:text-[#f2f2f0] cursor-pointer"
-              >
-                ✕
-              </button>
-            </div>
-
-            <p className="text-xs sm:text-sm text-[#f2f2f0]/85 font-light leading-relaxed mb-3.5">
-              By default, this portfolio uses only approximate IP region estimates and anonymous visit counts. Would you like to share exact browser GPS coordinates?
-            </p>
-
-            <div className="flex flex-wrap items-center gap-2">
-              <button
-                type="button"
-                disabled={isLoading}
-                onClick={handleEnableGps}
-                className="flex-1 min-w-[130px] rounded-full border border-[#e0dfdb] bg-[#f2f2f0] text-[#090909] font-medium uppercase tracking-widest px-4 py-2 text-[11px] hover:bg-white transition-colors cursor-pointer"
-              >
-                {isLoading ? 'Requesting...' : 'Allow Exact GPS'}
-              </button>
-              <button
-                type="button"
-                disabled={isLoading}
-                onClick={handleContinueIpOnly}
-                className="flex-1 min-w-[130px] rounded-full border border-[#e0dfdb]/35 text-[#f2f2f0] font-mono uppercase tracking-widest px-4 py-2 text-[11px] hover:bg-white/10 transition-colors cursor-pointer"
-              >
-                IP Estimate Only
-              </button>
-            </div>
-
-            <div className="mt-2.5 flex items-center justify-between text-[10px] font-mono text-[#b8b8b8]/60">
-              <a href="/privacy" className="underline hover:text-[#f2f2f0]">
-                Privacy Policy
-              </a>
-              <span>90-day auto-retention</span>
-            </div>
-          </motion.div>
+            </motion.div>
+          </div>
         )}
       </AnimatePresence>
 
-      {/* 2. Privacy & Location Data Management Modal (Withdraw Consent / Delete Data) */}
+      {/* 2. Privacy & Location Data Management Modal (Enable Later / Withdraw Consent / Delete Data) */}
       <AnimatePresence>
         {isOpenModal && (
           <motion.div
@@ -227,7 +260,7 @@ export const AnalyticsConsentBanner: FC<AnalyticsConsentBannerProps> = ({
                 </div>
 
                 <p>
-                  Raw IP addresses are never stored in our database. Without explicit GPS permission, only approximate city/region-level IP metadata is recorded. Analytics records are automatically purged after 90 days.
+                  Location sharing is completely optional. Without browser GPS permission, only approximate city/region-level IP metadata is used. You can enable location, withdraw GPS permission, or delete your analytics records at any time.
                 </p>
 
                 <div className="flex flex-col sm:flex-row gap-3 pt-2">
@@ -238,7 +271,7 @@ export const AnalyticsConsentBanner: FC<AnalyticsConsentBannerProps> = ({
                       onClick={handleEnableGps}
                       className="flex-1 rounded-full border border-[#e0dfdb] bg-[#f2f2f0] text-[#090909] font-medium uppercase tracking-widest px-5 py-2.5 text-xs hover:bg-white transition-colors cursor-pointer"
                     >
-                      Opt-In to Exact GPS
+                      Enable Location
                     </button>
                   ) : (
                     <button
@@ -265,9 +298,7 @@ export const AnalyticsConsentBanner: FC<AnalyticsConsentBannerProps> = ({
                   <a href="/privacy" className="underline hover:text-[#f2f2f0]">
                     Read Full Privacy Notice →
                   </a>
-                  <a href="/admin" onClick={(e) => { if (onOpenAdmin) { e.preventDefault(); onOpenAdmin(); } }} className="underline hover:text-[#f2f2f0] cursor-pointer">
-                    Admin Dashboard →
-                  </a>
+                  <span>90-day auto-retention</span>
                 </div>
               </div>
             </motion.div>

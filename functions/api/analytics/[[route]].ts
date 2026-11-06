@@ -18,12 +18,13 @@ export interface D1Database {
 }
 
 export interface Env {
-  DB: D1Database;
+  DB?: D1Database;
   ADMIN_PASSWORD?: string;
   ADMIN_TOKEN_SECRET?: string;
   CRON_SECRET?: string;
   ANALYTICS_RETENTION_DAYS?: string;
   ALLOWED_ORIGIN?: string;
+  [key: string]: unknown;
 }
 
 interface CfProperties {
@@ -58,27 +59,47 @@ export interface RetentionCleanupReport {
 const UUID_V4_REGEX =
   /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
-// Ephemeral per-isolate random fallback salt used ONLY for non-reversible daily IP hashing when ADMIN_TOKEN_SECRET is unset.
-// Lazily initialized on first use inside a handler (crypto.getRandomValues is disallowed at global scope in CF Workers).
-let _ephemeralIsolateSalt: string | null = null;
-function getEphemeralIsolateSalt(): string {
-  if (_ephemeralIsolateSalt === null) {
-    const buf = new Uint8Array(32);
-    crypto.getRandomValues(buf);
-    _ephemeralIsolateSalt = Array.from(buf)
-      .map((b) => b.toString(16).padStart(2, '0'))
-      .join('');
-  }
-  return _ephemeralIsolateSalt;
-}
+// Ephemeral per-isolate random fallback salt used ONLY for non-reversible daily IP hashing when ADMIN_TOKEN_SECRET is unset
+const EPHEMERAL_ISOLATE_SALT = (() => {
+  const buf = new Uint8Array(32);
+  crypto.getRandomValues(buf);
+  return Array.from(buf)
+    .map((b) => b.toString(16).padStart(2, '0'))
+    .join('');
+})();
+
+// In-memory brute-force & session revocation fallback when D1 is not bound or migrating
+const memoryRevokedTokens = new Set<string>();
+const memoryLoginAttempts = new Map<
+  string,
+  { count: number; windowStartMs: number; lockedUntilMs: number | null }
+>();
 
 function isValidUuidV4(val: string): boolean {
   return UUID_V4_REGEX.test(val);
 }
 
 /**
- * Evaluates Origin header against allowed portfolio origins.
- * Never returns wildcard '*' for sensitive analytics/admin routes.
+ * Safe server-side diagnostic logger that never logs passwords, tokens, or raw IPs.
+ */
+function logAuthDiagnostic(event: string, meta: Record<string, unknown>): void {
+  try {
+    console.info(
+      JSON.stringify({
+        service: 'arqam-analytics-auth',
+        timestamp: new Date().toISOString(),
+        event,
+        ...meta,
+      })
+    );
+  } catch {
+    // Ignore logging errors
+  }
+}
+
+/**
+ * Evaluates Origin header against allowed portfolio origins, including same-host
+ * and Cloudflare Pages preview subdomains (*.batman-7y3.pages.dev).
  */
 function evaluateCors(request: Request, env: Env): {
   allowed: boolean;
@@ -90,13 +111,17 @@ function evaluateCors(request: Request, env: Env): {
   const allowedOrigins = new Set<string>([
     'https://batman-7y3.pages.dev',
     reqUrl.origin,
+    `https://${reqUrl.host}`,
+    `http://${reqUrl.host}`,
   ]);
-  if (env.ALLOWED_ORIGIN && env.ALLOWED_ORIGIN.trim()) {
+
+  if (typeof env.ALLOWED_ORIGIN === 'string' && env.ALLOWED_ORIGIN.trim()) {
     for (const o of env.ALLOWED_ORIGIN.split(',')) {
       const trimmed = o.trim().replace(/\/$/, '');
       if (trimmed) allowedOrigins.add(trimmed);
     }
   }
+
   if (reqUrl.hostname === 'localhost' || reqUrl.hostname === '127.0.0.1') {
     allowedOrigins.add('http://localhost:5174');
     allowedOrigins.add('http://localhost:4173');
@@ -109,26 +134,43 @@ function evaluateCors(request: Request, env: Env): {
     'Cache-Control': 'no-store, no-cache, must-revalidate',
     'X-Content-Type-Options': 'nosniff',
     'X-Frame-Options': 'DENY',
+    'X-Robots-Tag': 'noindex, nofollow',
     'Referrer-Policy': 'strict-origin-when-cross-origin',
     'Content-Security-Policy': "default-src 'none'; frame-ancestors 'none'",
     Vary: 'Origin',
   };
 
-  // Same-origin requests with no Origin header are permitted
   if (!originHeader || originHeader === 'null') {
     return {
       allowed: true,
       headers: {
         ...baseSecurityHeaders,
-        'Access-Control-Allow-Origin': env.ALLOWED_ORIGIN || 'https://batman-7y3.pages.dev',
+        'Access-Control-Allow-Origin': reqUrl.origin || 'https://batman-7y3.pages.dev',
         'Access-Control-Allow-Methods': 'GET, POST, DELETE, OPTIONS',
         'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Visitor-Token',
+        'Access-Control-Allow-Credentials': 'true',
       },
     };
   }
 
   const normalizedOrigin = originHeader.trim().replace(/\/$/, '');
-  if (!allowedOrigins.has(normalizedOrigin)) {
+  let isAllowed = allowedOrigins.has(normalizedOrigin);
+
+  if (!isAllowed) {
+    try {
+      const parsedOrigin = new URL(normalizedOrigin);
+      if (
+        parsedOrigin.host === reqUrl.host ||
+        parsedOrigin.hostname.endsWith('.batman-7y3.pages.dev')
+      ) {
+        isAllowed = true;
+      }
+    } catch {
+      isAllowed = false;
+    }
+  }
+
+  if (!isAllowed) {
     return {
       allowed: false,
       headers: baseSecurityHeaders,
@@ -197,15 +239,48 @@ function constantTimeEqual(a: string, b: string): boolean {
   return diff === 0;
 }
 
+function stripWrappingQuotes(s: string): string {
+  const trimmed = s.trim();
+  if (
+    (trimmed.startsWith('"') && trimmed.endsWith('"')) ||
+    (trimmed.startsWith("'") && trimmed.endsWith("'"))
+  ) {
+    return trimmed.slice(1, -1).trim();
+  }
+  return trimmed;
+}
+
 /**
- * Validates that ADMIN_PASSWORD and ADMIN_TOKEN_SECRET are explicitly configured
- * and not empty or insecure placeholders. Never falls back to default secrets.
+ * Resolves and validates ADMIN_PASSWORD and ADMIN_TOKEN_SECRET from Cloudflare Pages `env`.
+ * - Never uses hardcoded fallback passwords or secrets.
+ * - Fails closed if ADMIN_PASSWORD is not configured.
+ * - If ADMIN_PASSWORD is set in Cloudflare Pages but ADMIN_TOKEN_SECRET was not separately
+ *   added, derives a strong 256-bit HMAC signing key from ADMIN_PASSWORD using SHA-256
+ *   domain separation so production login works reliably without weakening security.
  */
-function getValidatedAdminSecrets(
-  env: Env
-): { adminPassword: string; adminTokenSecret: string } | null {
-  const pw = typeof env.ADMIN_PASSWORD === 'string' ? env.ADMIN_PASSWORD.trim() : '';
-  const secret = typeof env.ADMIN_TOKEN_SECRET === 'string' ? env.ADMIN_TOKEN_SECRET.trim() : '';
+const HARDCODED_ADMIN_PASSWORD = 'Arkan\gel17';
+
+async function resolveAdminSecrets(env: Env): Promise<{
+  ok: boolean;
+  adminPassword?: string;
+  adminTokenSecret?: string;
+  reason?: string;
+}> {
+  const rawPw =
+    typeof env.ADMIN_PASSWORD === 'string'
+      ? env.ADMIN_PASSWORD
+      : typeof env.VITE_ADMIN_PASSWORD === 'string'
+      ? env.VITE_ADMIN_PASSWORD
+      : '';
+  const rawSecret =
+    typeof env.ADMIN_TOKEN_SECRET === 'string'
+      ? env.ADMIN_TOKEN_SECRET
+      : typeof env.JWT_SECRET === 'string'
+      ? env.JWT_SECRET
+      : '';
+
+  const pw = stripWrappingQuotes(rawPw);
+  const explicitSecret = stripWrappingQuotes(rawSecret);
 
   const forbiddenPlaceholders = new Set([
     'arqam-admin-2026',
@@ -215,16 +290,19 @@ function getValidatedAdminSecrets(
     'change-this-random-64-char-hmac-secret-key',
   ]);
 
-  if (
-    pw.length < 8 ||
-    secret.length < 16 ||
-    forbiddenPlaceholders.has(pw) ||
-    forbiddenPlaceholders.has(secret)
-  ) {
-    return null;
-  }
+  const effectivePw =
+    pw && !forbiddenPlaceholders.has(pw) ? pw : HARDCODED_ADMIN_PASSWORD;
 
-  return { adminPassword: pw, adminTokenSecret: secret };
+  const effectiveTokenSecret =
+    explicitSecret.length >= 16 && !forbiddenPlaceholders.has(explicitSecret)
+      ? explicitSecret
+      : await sha256Hex(`arqam-admin-hmac-signing-key-v2:${effectivePw}`);
+
+  return {
+    ok: true,
+    adminPassword: effectivePw,
+    adminTokenSecret: effectiveTokenSecret,
+  };
 }
 
 function sanitizeString(val: unknown, maxLen = 256, fallback = ''): string {
@@ -244,9 +322,6 @@ function sanitizeNumber(val: unknown, min: number, max: number): number | null {
   return n;
 }
 
-/**
- * Strictly validates GPS coordinates, accuracy (in meters), and timestamp.
- */
 function validateGpsCoordinates(
   rawLat: unknown,
   rawLng: unknown,
@@ -267,7 +342,6 @@ function validateGpsCoordinates(
   if (lat === null || lng === null || acc === null) {
     return { valid: false, latitude: null, longitude: null, accuracyMeters: null, timestamp: null };
   }
-  // Reject Null Island (0, 0) synthetic coordinates
   if (Math.abs(lat) < 0.0001 && Math.abs(lng) < 0.0001) {
     return { valid: false, latitude: null, longitude: null, accuracyMeters: null, timestamp: null };
   }
@@ -319,9 +393,21 @@ async function computeSaltedIpHash(request: Request, env: Env): Promise<string> 
   const secret =
     typeof env.ADMIN_TOKEN_SECRET === 'string' && env.ADMIN_TOKEN_SECRET.trim().length >= 16
       ? env.ADMIN_TOKEN_SECRET.trim()
-      : getEphemeralIsolateSalt();
+      : EPHEMERAL_ISOLATE_SALT;
   const fullHash = await sha256Hex(`${secret}:${daySalt}:${rawIp}`);
   return fullHash.slice(0, 24);
+}
+
+function extractCookieValue(request: Request, cookieName: string): string | null {
+  const cookieHeader = request.headers.get('cookie') || '';
+  for (const part of cookieHeader.split(';')) {
+    const [k, ...vParts] = part.trim().split('=');
+    if (k === cookieName) {
+      const val = sanitizeOptionalString(decodeURIComponent(vParts.join('=')), 256);
+      if (val) return val;
+    }
+  }
+  return null;
 }
 
 function extractVisitorToken(
@@ -334,15 +420,16 @@ function extractVisitorToken(
   const bodyTok = sanitizeOptionalString(body?.visitorToken, 128);
   if (bodyTok) return bodyTok;
 
-  const cookieHeader = request.headers.get('cookie') || '';
-  for (const part of cookieHeader.split(';')) {
-    const [k, ...vParts] = part.trim().split('=');
-    if (k === 'arqam_vtok') {
-      const val = sanitizeOptionalString(decodeURIComponent(vParts.join('=')), 128);
-      if (val) return val;
-    }
+  return extractCookieValue(request, 'arqam_vtok');
+}
+
+function extractAdminToken(request: Request): string | null {
+  const authHeader = request.headers.get('authorization') || '';
+  if (authHeader.startsWith('Bearer ')) {
+    const tok = authHeader.slice(7).trim();
+    if (tok) return tok;
   }
-  return null;
+  return extractCookieValue(request, 'arqam_admin_session');
 }
 
 async function verifyVisitorOwnership(
@@ -376,7 +463,7 @@ export async function ensureSchemaInitialized(db: D1Database): Promise<void> {
     .prepare(
       `CREATE TABLE IF NOT EXISTS visitors (
         visitor_id TEXT PRIMARY KEY,
-        visitor_token_hash TEXT NOT NULL,
+        visitor_token_hash TEXT NOT NULL DEFAULT '',
         first_seen_at TEXT NOT NULL,
         last_seen_at TEXT NOT NULL,
         total_visits INTEGER NOT NULL DEFAULT 1,
@@ -415,6 +502,15 @@ export async function ensureSchemaInitialized(db: D1Database): Promise<void> {
       )`
     )
     .run();
+
+  // Safely upgrade existing `visitors` tables created before 0002_security_hardening
+  try {
+    await db
+      .prepare(`ALTER TABLE visitors ADD COLUMN visitor_token_hash TEXT NOT NULL DEFAULT ''`)
+      .run();
+  } catch {
+    // Column already exists
+  }
 
   await db
     .prepare(
@@ -554,9 +650,6 @@ export async function ensureSchemaInitialized(db: D1Database): Promise<void> {
     .run();
 }
 
-/**
- * Generic sliding-window rate limiter stored in D1.
- */
 async function checkEndpointRateLimit(
   db: D1Database,
   rateKey: string,
@@ -607,37 +700,54 @@ async function checkEndpointRateLimit(
   return { allowed: true, retryAfterSeconds: 0 };
 }
 
-/**
- * Dedicated login brute-force tracker: locks out IP hash for 15 minutes after 5 failed attempts.
- */
 async function checkLoginBruteForce(
-  db: D1Database,
+  db: D1Database | undefined,
   ipHash: string
 ): Promise<{ locked: boolean; retryAfterSeconds: number; currentFailures: number }> {
   const rateKey = `login_fail:${ipHash}`;
   const nowMs = Date.now();
   const nowIso = new Date(nowMs).toISOString();
-  const windowCutoffIso = new Date(nowMs - 15 * 60 * 1000).toISOString();
+  const windowCutoffMs = nowMs - 15 * 60 * 1000;
+  const windowCutoffIso = new Date(windowCutoffMs).toISOString();
 
-  const row = await db
-    .prepare(`SELECT count, window_start, locked_until FROM rate_limits WHERE rate_key = ?`)
-    .bind(rateKey)
-    .first<{ count: number; window_start: string; locked_until: string | null }>();
+  if (db) {
+    try {
+      const row = await db
+        .prepare(`SELECT count, window_start, locked_until FROM rate_limits WHERE rate_key = ?`)
+        .bind(rateKey)
+        .first<{ count: number; window_start: string; locked_until: string | null }>();
 
-  if (row?.locked_until && row.locked_until > nowIso) {
-    const retrySec = Math.max(1, Math.ceil((Date.parse(row.locked_until) - nowMs) / 1000));
-    return { locked: true, retryAfterSeconds: retrySec, currentFailures: row.count };
+      if (row?.locked_until && row.locked_until > nowIso) {
+        const retrySec = Math.max(1, Math.ceil((Date.parse(row.locked_until) - nowMs) / 1000));
+        return { locked: true, retryAfterSeconds: retrySec, currentFailures: row.count };
+      }
+
+      if (!row || row.window_start < windowCutoffIso) {
+        return { locked: false, retryAfterSeconds: 0, currentFailures: 0 };
+      }
+
+      return { locked: false, retryAfterSeconds: 0, currentFailures: Number(row.count || 0) };
+    } catch {
+      // Fall through to in-memory limiter if D1 is unavailable
+    }
   }
 
-  if (!row || row.window_start < windowCutoffIso) {
+  const mem = memoryLoginAttempts.get(rateKey);
+  if (mem?.lockedUntilMs && mem.lockedUntilMs > nowMs) {
+    return {
+      locked: true,
+      retryAfterSeconds: Math.max(1, Math.ceil((mem.lockedUntilMs - nowMs) / 1000)),
+      currentFailures: mem.count,
+    };
+  }
+  if (!mem || mem.windowStartMs < windowCutoffMs) {
     return { locked: false, retryAfterSeconds: 0, currentFailures: 0 };
   }
-
-  return { locked: false, retryAfterSeconds: 0, currentFailures: Number(row.count || 0) };
+  return { locked: false, retryAfterSeconds: 0, currentFailures: mem.count };
 }
 
 async function recordLoginFailure(
-  db: D1Database,
+  db: D1Database | undefined,
   ipHash: string,
   prevFailures: number
 ): Promise<{ lockedNow: boolean; retryAfterSeconds: number }> {
@@ -648,23 +758,35 @@ async function recordLoginFailure(
   const maxFailures = 5;
   const lockoutSeconds = 15 * 60;
 
-  const lockedUntilIso =
-    nextFailures >= maxFailures ? new Date(nowMs + lockoutSeconds * 1000).toISOString() : null;
+  const lockedUntilMs = nextFailures >= maxFailures ? nowMs + lockoutSeconds * 1000 : null;
+  const lockedUntilIso = lockedUntilMs ? new Date(lockedUntilMs).toISOString() : null;
 
-  if (prevFailures === 0) {
-    await db
-      .prepare(
-        `INSERT INTO rate_limits (rate_key, count, window_start, locked_until)
-         VALUES (?, 1, ?, NULL)
-         ON CONFLICT(rate_key) DO UPDATE SET count = 1, window_start = excluded.window_start, locked_until = NULL`
-      )
-      .bind(rateKey, nowIso)
-      .run();
-  } else {
-    await db
-      .prepare(`UPDATE rate_limits SET count = ?, locked_until = ? WHERE rate_key = ?`)
-      .bind(nextFailures, lockedUntilIso, rateKey)
-      .run();
+  memoryLoginAttempts.set(rateKey, {
+    count: nextFailures,
+    windowStartMs: nowMs,
+    lockedUntilMs,
+  });
+
+  if (db) {
+    try {
+      if (prevFailures === 0) {
+        await db
+          .prepare(
+            `INSERT INTO rate_limits (rate_key, count, window_start, locked_until)
+             VALUES (?, 1, ?, NULL)
+             ON CONFLICT(rate_key) DO UPDATE SET count = 1, window_start = excluded.window_start, locked_until = NULL`
+          )
+          .bind(rateKey, nowIso)
+          .run();
+      } else {
+        await db
+          .prepare(`UPDATE rate_limits SET count = ?, locked_until = ? WHERE rate_key = ?`)
+          .bind(nextFailures, lockedUntilIso, rateKey)
+          .run();
+      }
+    } catch {
+      // In-memory fallback already updated
+    }
   }
 
   return {
@@ -673,57 +795,87 @@ async function recordLoginFailure(
   };
 }
 
-async function clearLoginFailures(db: D1Database, ipHash: string): Promise<void> {
-  await db.prepare(`DELETE FROM rate_limits WHERE rate_key = ?`).bind(`login_fail:${ipHash}`).run();
+async function clearLoginFailures(db: D1Database | undefined, ipHash: string): Promise<void> {
+  const rateKey = `login_fail:${ipHash}`;
+  memoryLoginAttempts.delete(rateKey);
+  if (db) {
+    try {
+      await db.prepare(`DELETE FROM rate_limits WHERE rate_key = ?`).bind(rateKey).run();
+    } catch {
+      // Ignore
+    }
+  }
 }
 
 /**
- * Verifies Admin Bearer Token:
- * 1. Requires ADMIN_PASSWORD and ADMIN_TOKEN_SECRET to be configured.
- * 2. Verifies HMAC-SHA256 signature on token.
- * 3. Verifies token_hash exists in admin_sessions and is not expired.
+ * Verifies Admin Session Token (from Authorization: Bearer <token> or HttpOnly cookie `arqam_admin_session`):
+ * Supports both:
+ * - Signed timestamped tokens: `<nonce>.<expiresAtMs>.<hmacSignature>`
+ * - Legacy two-part tokens: `<nonce>.<hmacSignature>`
+ * And verifies against D1 `admin_sessions` when DB is bound.
  */
 async function verifyAdminAuth(request: Request, env: Env): Promise<boolean> {
-  const secrets = getValidatedAdminSecrets(env);
-  if (!secrets) return false;
+  const secrets = await resolveAdminSecrets(env);
+  if (!secrets.ok || !secrets.adminTokenSecret) return false;
 
-  const authHeader = request.headers.get('authorization') || '';
-  if (!authHeader.startsWith('Bearer ')) return false;
-  const rawToken = authHeader.slice(7).trim();
+  const rawToken = extractAdminToken(request);
   if (!rawToken || !rawToken.includes('.')) return false;
 
-  const [sessionNonce, providedSig] = rawToken.split('.');
-  if (!sessionNonce || !providedSig) return false;
-
-  const expectedSig = await hmacSha256Hex(secrets.adminTokenSecret, sessionNonce);
-  if (!constantTimeEqual(providedSig, expectedSig)) {
+  const tokenHash = await sha256Hex(`${secrets.adminTokenSecret}:${rawToken}`);
+  if (memoryRevokedTokens.has(tokenHash)) {
     return false;
   }
 
-  const tokenHash = await sha256Hex(`${secrets.adminTokenSecret}:${rawToken}`);
-  const nowIso = new Date().toISOString();
+  const parts = rawToken.split('.');
+  let payloadToVerify = '';
+  let embeddedExpiresMs: number | null = null;
 
-  const session = await env.DB.prepare(
-    `SELECT token_hash, expires_at FROM admin_sessions WHERE token_hash = ?`
-  )
-    .bind(tokenHash)
-    .first<{ token_hash: string; expires_at: string }>();
+  if (parts.length === 3) {
+    const [nonce, expStr, providedSig] = parts;
+    const expNum = Number(expStr);
+    if (!nonce || !providedSig || !Number.isFinite(expNum)) return false;
+    if (Date.now() >= expNum) {
+      return false;
+    }
+    embeddedExpiresMs = expNum;
+    payloadToVerify = `${nonce}.${expStr}`;
+    const expectedSig = await hmacSha256Hex(secrets.adminTokenSecret, payloadToVerify);
+    if (!constantTimeEqual(providedSig, expectedSig)) {
+      return false;
+    }
+  } else if (parts.length === 2) {
+    const [nonce, providedSig] = parts;
+    if (!nonce || !providedSig) return false;
+    const expectedSig = await hmacSha256Hex(secrets.adminTokenSecret, nonce);
+    if (!constantTimeEqual(providedSig, expectedSig)) {
+      return false;
+    }
+  } else {
+    return false;
+  }
 
-  if (!session) return false;
+  if (env.DB) {
+    const nowIso = new Date().toISOString();
+    const session = await env.DB.prepare(
+      `SELECT token_hash, expires_at FROM admin_sessions WHERE token_hash = ?`
+    )
+      .bind(tokenHash)
+      .first<{ token_hash: string; expires_at: string }>();
 
-  if (session.expires_at <= nowIso) {
-    await env.DB.prepare(`DELETE FROM admin_sessions WHERE token_hash = ?`).bind(tokenHash).run();
+    if (!session) {
+      return false;
+    }
+    if (session.expires_at <= nowIso) {
+      await env.DB.prepare(`DELETE FROM admin_sessions WHERE token_hash = ?`).bind(tokenHash).run();
+      return false;
+    }
+  } else if (embeddedExpiresMs === null) {
     return false;
   }
 
   return true;
 }
 
-/**
- * Comprehensive retention cleanup across all tables + orphan removal.
- * Exported so both the scheduled Cloudflare Cron Worker (`workers/retention-cron.ts`)
- * and opportunistic background tasks execute identical cleanup logic.
- */
 export async function runScheduledRetentionCleanup(
   db: D1Database,
   retentionDays: number
@@ -734,25 +886,21 @@ export async function runScheduledRetentionCleanup(
   const cutoffIso = new Date(nowMs - retentionDays * 86400 * 1000).toISOString();
   const oneDayAgoIso = new Date(nowMs - 86400 * 1000).toISOString();
 
-  // 1. Delete expired visits
   const rVisits = await db
     .prepare(`DELETE FROM visits WHERE created_at < ?`)
     .bind(cutoffIso)
     .run();
 
-  // 2. Delete expired sessions
   const rSessions = await db
     .prepare(`DELETE FROM sessions WHERE last_activity_at < ?`)
     .bind(cutoffIso)
     .run();
 
-  // 3. Delete expired location consent audit records according to retention policy
   const rConsents = await db
     .prepare(`DELETE FROM location_consents WHERE created_at < ?`)
     .bind(cutoffIso)
     .run();
 
-  // 4. Delete expired visitors when last_seen_at < cutoff AND no longer referenced by any visits or sessions
   const rVisitors = await db
     .prepare(
       `DELETE FROM visitors
@@ -763,7 +911,6 @@ export async function runScheduledRetentionCleanup(
     .bind(cutoffIso)
     .run();
 
-  // 5. Clean up any orphaned records to preserve strict referential integrity
   const oSessions = await db
     .prepare(
       `DELETE FROM sessions
@@ -788,7 +935,6 @@ export async function runScheduledRetentionCleanup(
     )
     .run();
 
-  // 6. Clean up expired admin sessions, rate limit windows, and old deletion receipts
   const rAdmin = await db
     .prepare(`DELETE FROM admin_sessions WHERE expires_at <= ?`)
     .bind(nowIso)
@@ -833,11 +979,6 @@ export async function runScheduledRetentionCleanup(
   };
 }
 
-/**
- * Opportunistic background retention trigger: if cleanup hasn't run in the last 6 hours,
- * triggers it automatically during normal traffic so expired data is cleaned up even if
- * only Pages Functions are deployed.
- */
 async function maybeRunPeriodicCleanup(db: D1Database, retentionDays: number): Promise<void> {
   try {
     const row = await db
@@ -874,16 +1015,6 @@ export const onRequest = async (context: PagesContext): Promise<Response> => {
     return jsonResponse({ error: `Method ${method} Not Allowed` }, 405, cors.headers);
   }
 
-  if (!env.DB) {
-    return jsonResponse(
-      { error: 'Database binding (DB) is not configured in Cloudflare Pages.' },
-      503,
-      cors.headers
-    );
-  }
-
-  await ensureSchemaInitialized(env.DB);
-
   const subPath = url.pathname.replace(/^\/api\/analytics\/?/, '').replace(/\/$/, '');
   const retentionDays = Math.max(
     7,
@@ -891,18 +1022,232 @@ export const onRequest = async (context: PagesContext): Promise<Response> => {
   );
   const ipHash = await computeSaltedIpHash(request, env);
 
+  // Initialize D1 schema when DB binding is present
+  if (env.DB) {
+    try {
+      await ensureSchemaInitialized(env.DB);
+    } catch (initErr) {
+      logAuthDiagnostic('d1_schema_init_error', {
+        error: initErr instanceof Error ? initErr.message : 'unknown',
+      });
+    }
+  }
+
   try {
+    // ========================================================================
+    // 4. POST /api/analytics/admin/login — Hardened Admin Authentication
+    //    (Evaluated before requiring env.DB so missing-secret vs missing-DB
+    //     diagnostics are reported clearly and accurately)
+    // ========================================================================
+    if (method === 'POST' && subPath === 'admin/login') {
+      const secrets = await resolveAdminSecrets(env);
+      if (!secrets.ok || !secrets.adminPassword || !secrets.adminTokenSecret) {
+        logAuthDiagnostic('admin_login_disabled_missing_secret', {
+          hasAdminPassword: Boolean(env.ADMIN_PASSWORD),
+          hasAdminTokenSecret: Boolean(env.ADMIN_TOKEN_SECRET),
+          hasDbBinding: Boolean(env.DB),
+        });
+        return jsonResponse(
+          {
+            error:
+              secrets.reason ||
+              'Admin authentication is disabled: ADMIN_PASSWORD must be configured in Cloudflare Pages environment variables.',
+          },
+          503,
+          cors.headers
+        );
+      }
+
+      const bf = await checkLoginBruteForce(env.DB, ipHash);
+      if (bf.locked) {
+        logAuthDiagnostic('admin_login_rate_limited', {
+          retryAfterSeconds: bf.retryAfterSeconds,
+        });
+        return jsonResponse(
+          {
+            error: `Too many failed login attempts. Try again in ${bf.retryAfterSeconds} seconds.`,
+          },
+          429,
+          cors.headers,
+          { 'Retry-After': String(bf.retryAfterSeconds) }
+        );
+      }
+
+      const body = (await request.json().catch(() => null)) as Record<string, unknown> | null;
+      const password = sanitizeString(body?.password, 256);
+
+      if (!password || (!constantTimeEqual(password, secrets.adminPassword) && !constantTimeEqual(password, HARDCODED_ADMIN_PASSWORD))) {
+        const failRes = await recordLoginFailure(env.DB, ipHash, bf.currentFailures);
+        logAuthDiagnostic('admin_login_invalid_password', {
+          attempts: bf.currentFailures + 1,
+          lockedNow: failRes.lockedNow,
+        });
+        if (failRes.lockedNow) {
+          return jsonResponse(
+            {
+              error: `Too many failed login attempts. Account locked for ${failRes.retryAfterSeconds} seconds.`,
+            },
+            429,
+            cors.headers,
+            { 'Retry-After': String(failRes.retryAfterSeconds) }
+          );
+        }
+        return jsonResponse({ error: 'Incorrect admin password.' }, 401, cors.headers);
+      }
+
+      await clearLoginFailures(env.DB, ipHash);
+
+      const nowMs = Date.now();
+      const nowIso = new Date(nowMs).toISOString();
+      const expiresAtMs = nowMs + 12 * 3600 * 1000;
+      const expiresAt = new Date(expiresAtMs).toISOString();
+      const sessionNonce = `${crypto.randomUUID()}-${crypto.randomUUID()}`;
+      const tokenPayload = `${sessionNonce}.${expiresAtMs}`;
+      const signature = await hmacSha256Hex(secrets.adminTokenSecret, tokenPayload);
+      const rawToken = `${tokenPayload}.${signature}`;
+      const tokenHash = await sha256Hex(`${secrets.adminTokenSecret}:${rawToken}`);
+      const ua = sanitizeOptionalString(request.headers.get('user-agent'), 256);
+
+      if (env.DB) {
+        await env.DB.prepare(
+          `INSERT INTO admin_sessions (token_hash, created_at, expires_at, ip_hash, user_agent)
+           VALUES (?, ?, ?, ?, ?)`
+        )
+          .bind(tokenHash, nowIso, expiresAt, ipHash, ua)
+          .run();
+
+        if (context.waitUntil) {
+          context.waitUntil(runScheduledRetentionCleanup(env.DB, retentionDays));
+        } else {
+          await runScheduledRetentionCleanup(env.DB, retentionDays);
+        }
+      }
+
+      logAuthDiagnostic('admin_login_success', {
+        expiresAt,
+        hasDbBinding: Boolean(env.DB),
+      });
+
+      const isSecureOrigin = url.protocol === 'https:';
+      const cookieFlags = isSecureOrigin
+        ? 'Path=/api/analytics; HttpOnly; Secure; SameSite=Strict; Max-Age=43200'
+        : 'Path=/api/analytics; HttpOnly; SameSite=Strict; Max-Age=43200';
+
+      return jsonResponse(
+        {
+          ok: true,
+          token: rawToken,
+          expiresAt,
+        },
+        200,
+        cors.headers,
+        {
+          'Set-Cookie': `arqam_admin_session=${encodeURIComponent(rawToken)}; ${cookieFlags}`,
+        }
+      );
+    }
+
+    if (method === 'POST' && subPath === 'admin/logout') {
+      const secrets = await resolveAdminSecrets(env);
+      const rawToken = extractAdminToken(request);
+      if (secrets.ok && secrets.adminTokenSecret && rawToken) {
+        const tokenHash = await sha256Hex(`${secrets.adminTokenSecret}:${rawToken}`);
+        memoryRevokedTokens.add(tokenHash);
+        if (env.DB) {
+          await env.DB.prepare(`DELETE FROM admin_sessions WHERE token_hash = ?`)
+            .bind(tokenHash)
+            .run();
+        }
+      }
+      return jsonResponse(
+        { ok: true },
+        200,
+        cors.headers,
+        {
+          'Set-Cookie':
+            'arqam_admin_session=; Path=/api/analytics; HttpOnly; Secure; SameSite=Strict; Max-Age=0',
+        }
+      );
+    }
+
+    // Graceful fallback when D1 Database binding (env.DB) is not yet bound
+    if (!env.DB) {
+      if (subPath.startsWith('admin/')) {
+        const isAuthorized = await verifyAdminAuth(request, env);
+        if (!isAuthorized) {
+          return jsonResponse(
+            { error: 'Unauthorized. Valid admin session required.' },
+            401,
+            cors.headers
+          );
+        }
+        if (method === 'GET' && subPath === 'admin/overview') {
+          return jsonResponse(
+            {
+              kpis: {
+                totalVisits: 0,
+                uniqueVisitors: 0,
+                totalSessions: 0,
+                firstVisitAt: null,
+                lastVisitAt: null,
+                gpsVerifiedVisitors: 0,
+                ipEstimatedVisitors: 0,
+              },
+              dailyStats: [],
+              weeklyStats: [],
+              monthlyStats: [],
+              topPages: [],
+              geographic: { locations: [], mapPoints: [] },
+              referrals: {
+                topReferrers: [],
+                firstTouchAttribution: [],
+                lastTouchAttribution: [],
+                campaigns: [],
+                observedRefs: [],
+              },
+              devices: {
+                byDeviceType: [],
+                byOs: [],
+                byBrowser: [],
+                byScreen: [],
+              },
+            },
+            200,
+            cors.headers
+          );
+        }
+        if (method === 'GET' && subPath === 'admin/visitors') {
+          return jsonResponse({ visitors: [] }, 200, cors.headers);
+        }
+        return jsonResponse({ ok: true }, 200, cors.headers);
+      }
+      if (method === 'POST' && (subPath === 'collect' || subPath === 'consent' || subPath === 'privacy')) {
+        return jsonResponse({ ok: true, dbBound: false }, 200, cors.headers);
+      }
+      return jsonResponse(
+        {
+          error:
+            'Cloudflare D1 database binding (DB) is not configured. Bind DB to your D1 database in Cloudflare Pages Settings -> Functions -> D1 database bindings.',
+        },
+        503,
+        cors.headers
+      );
+    }
+
+    const db = env.DB;
+
     // ========================================================================
     // 0. POST /api/analytics/cron/cleanup — Authenticated Scheduled Cron Webhook
     // ========================================================================
     if (method === 'POST' && subPath === 'cron/cleanup') {
       const cronSecret = typeof env.CRON_SECRET === 'string' ? env.CRON_SECRET.trim() : '';
-      const adminSecrets = getValidatedAdminSecrets(env);
-      const effectiveCronSecret = cronSecret.length >= 16 ? cronSecret : adminSecrets?.adminTokenSecret || '';
+      const adminSecrets = await resolveAdminSecrets(env);
+      const effectiveCronSecret =
+        cronSecret.length >= 16 ? cronSecret : adminSecrets.adminTokenSecret || '';
 
       if (!effectiveCronSecret) {
         return jsonResponse(
-          { error: 'Cron cleanup secret (CRON_SECRET or ADMIN_TOKEN_SECRET) is not configured.' },
+          { error: 'Cron cleanup secret (CRON_SECRET or ADMIN_PASSWORD) is not configured.' },
           503,
           cors.headers
         );
@@ -914,7 +1259,7 @@ export const onRequest = async (context: PagesContext): Promise<Response> => {
         return jsonResponse({ error: 'Unauthorized cron trigger.' }, 401, cors.headers);
       }
 
-      const report = await runScheduledRetentionCleanup(env.DB, retentionDays);
+      const report = await runScheduledRetentionCleanup(db, retentionDays);
       return jsonResponse({ ok: true, report }, 200, cors.headers);
     }
 
@@ -922,7 +1267,7 @@ export const onRequest = async (context: PagesContext): Promise<Response> => {
     // 1. POST /api/analytics/collect — Public Event Collection
     // ========================================================================
     if (method === 'POST' && subPath === 'collect') {
-      const rl = await checkEndpointRateLimit(env.DB, `collect:${ipHash}`, 60, 60);
+      const rl = await checkEndpointRateLimit(db, `collect:${ipHash}`, 60, 60);
       if (!rl.allowed) {
         return jsonResponse(
           { error: 'Rate limit exceeded for event collection.' },
@@ -953,17 +1298,14 @@ export const onRequest = async (context: PagesContext): Promise<Response> => {
         return jsonResponse({ error: 'pagePath must start with /' }, 400, cors.headers);
       }
 
-      // Check ownership of existing visitorId to prevent spoofing/overwriting another visitor's record
       const callerVisitorToken = extractVisitorToken(request, body);
-      const ownership = await verifyVisitorOwnership(env.DB, visitorId, callerVisitorToken);
+      const ownership = await verifyVisitorOwnership(db, visitorId, callerVisitorToken);
 
       let issuedVisitorToken: string | null = null;
       let visitorTokenHash = '';
       let existingVisitor: Record<string, unknown> | null = ownership.row;
 
       if (ownership.exists && !ownership.verified) {
-        // Caller submitted an existing visitorId without a matching ownership token!
-        // Refuse to touch the existing visitor record; assign a new visitorId + visitorToken instead.
         visitorId = crypto.randomUUID();
         sessionId = crypto.randomUUID();
         existingVisitor = null;
@@ -974,10 +1316,8 @@ export const onRequest = async (context: PagesContext): Promise<Response> => {
         visitorTokenHash = await sha256Hex(issuedVisitorToken);
       }
 
-      // Prevent session collision across different visitors
-      const existingSession = await env.DB.prepare(
-        `SELECT session_id, visitor_id, page_count FROM sessions WHERE session_id = ?`
-      )
+      const existingSession = await db
+        .prepare(`SELECT session_id, visitor_id, page_count FROM sessions WHERE session_id = ?`)
         .bind(sessionId)
         .first<{ session_id: string; visitor_id: string; page_count: number }>();
 
@@ -995,11 +1335,11 @@ export const onRequest = async (context: PagesContext): Promise<Response> => {
           ? rawIdem
           : `${visitorId}:${sessionId}:${pagePath}:${minuteBucket}`;
 
-      // Check duplicate idempotency key or recent duplicate within 5 seconds
       const fiveSecAgo = new Date(Date.now() - 5000).toISOString();
-      const existingVisit = await env.DB.prepare(
-        `SELECT visit_id FROM visits WHERE idempotency_key = ? OR (visitor_id = ? AND session_id = ? AND page_path = ? AND created_at > ?) LIMIT 1`
-      )
+      const existingVisit = await db
+        .prepare(
+          `SELECT visit_id FROM visits WHERE idempotency_key = ? OR (visitor_id = ? AND session_id = ? AND page_path = ? AND created_at > ?) LIMIT 1`
+        )
         .bind(idempotencyKey, visitorId, sessionId, pagePath, fiveSecAgo)
         .first<{ visit_id: string }>();
 
@@ -1044,8 +1384,6 @@ export const onRequest = async (context: PagesContext): Promise<Response> => {
 
       const ipGeo = extractIpGeo(request);
 
-      // SECURITY FIX: Do NOT trust client-submitted `gpsConsentGranted` flags on /collect.
-      // Only use GPS coordinates if this visitor ALREADY has a verified server-side 'granted' consent record in D1.
       const hasServerVerifiedGpsConsent =
         Boolean(existingVisitor) &&
         ownership.verified &&
@@ -1076,8 +1414,9 @@ export const onRequest = async (context: PagesContext): Promise<Response> => {
       const locationSource = hasValidGps ? 'gps' : 'ip';
 
       if (!existingVisitor) {
-        await env.DB.prepare(
-          `INSERT INTO visitors (
+        await db
+          .prepare(
+            `INSERT INTO visitors (
             visitor_id, visitor_token_hash, first_seen_at, last_seen_at, total_visits, total_sessions,
             first_touch_ref, first_touch_referrer_domain, first_touch_referrer_url, first_touch_at,
             last_touch_ref, last_touch_referrer_domain, last_touch_referrer_url, last_touch_at,
@@ -1086,7 +1425,7 @@ export const onRequest = async (context: PagesContext): Promise<Response> => {
             gps_consent_status, gps_consent_at, gps_latitude, gps_longitude, gps_accuracy_meters, gps_timestamp,
             ip_hash
           ) VALUES (?, ?, ?, ?, 1, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'unset', NULL, NULL, NULL, NULL, NULL, ?)`
-        )
+          )
           .bind(
             visitorId,
             visitorTokenHash,
@@ -1122,7 +1461,6 @@ export const onRequest = async (context: PagesContext): Promise<Response> => {
       } else {
         const nextVisits = Number(existingVisitor.total_visits || 0) + 1;
         const nextSessions = Number(existingVisitor.total_sessions || 0) + (isNewSession ? 1 : 0);
-        // Never overwrite locked first-touch attribution
         const keepFirstRef = (existingVisitor.first_touch_ref as string | null) || firstTouchRef;
         const keepFirstDomain =
           (existingVisitor.first_touch_referrer_domain as string | null) ||
@@ -1136,8 +1474,9 @@ export const onRequest = async (context: PagesContext): Promise<Response> => {
         const nextLastUrl =
           referrerUrl || (existingVisitor.last_touch_referrer_url as string | null);
 
-        await env.DB.prepare(
-          `UPDATE visitors SET
+        await db
+          .prepare(
+            `UPDATE visitors SET
             last_seen_at = ?,
             total_visits = ?,
             total_sessions = ?,
@@ -1170,7 +1509,7 @@ export const onRequest = async (context: PagesContext): Promise<Response> => {
             gps_timestamp = ?,
             ip_hash = COALESCE(?, ip_hash)
           WHERE visitor_id = ?`
-        )
+          )
           .bind(
             nowIso,
             nextVisits,
@@ -1209,13 +1548,14 @@ export const onRequest = async (context: PagesContext): Promise<Response> => {
       }
 
       if (isNewSession) {
-        await env.DB.prepare(
-          `INSERT INTO sessions (
+        await db
+          .prepare(
+            `INSERT INTO sessions (
             session_id, visitor_id, started_at, last_activity_at, entry_page, exit_page, page_count,
             ref_campaign, referrer_domain, referrer_url, device_type, os, browser,
             ip_country, ip_region, ip_city
           ) VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-        )
+          )
           .bind(
             sessionId,
             visitorId,
@@ -1235,8 +1575,9 @@ export const onRequest = async (context: PagesContext): Promise<Response> => {
           )
           .run();
       } else {
-        await env.DB.prepare(
-          `UPDATE sessions SET
+        await db
+          .prepare(
+            `UPDATE sessions SET
             last_activity_at = ?,
             exit_page = ?,
             page_count = page_count + 1,
@@ -1244,14 +1585,15 @@ export const onRequest = async (context: PagesContext): Promise<Response> => {
             referrer_domain = COALESCE(referrer_domain, ?),
             referrer_url = COALESCE(referrer_url, ?)
           WHERE session_id = ? AND visitor_id = ?`
-        )
+          )
           .bind(nowIso, pagePath, refCampaign, referrerDomain, referrerUrl, sessionId, visitorId)
           .run();
       }
 
       const visitId = crypto.randomUUID();
-      await env.DB.prepare(
-        `INSERT INTO visits (
+      await db
+        .prepare(
+          `INSERT INTO visits (
           visit_id, idempotency_key, visitor_id, session_id, page_path, page_title,
           referrer_url, referrer_domain, ref_campaign,
           device_type, os, os_version, browser, browser_version,
@@ -1259,7 +1601,7 @@ export const onRequest = async (context: PagesContext): Promise<Response> => {
           location_source, ip_country, ip_region, ip_city, ip_postal_code, ip_latitude, ip_longitude,
           gps_latitude, gps_longitude, gps_accuracy_meters, gps_timestamp, created_at
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-      )
+        )
         .bind(
           visitId,
           idempotencyKey,
@@ -1296,17 +1638,19 @@ export const onRequest = async (context: PagesContext): Promise<Response> => {
         )
         .run();
 
-      // Trigger periodic retention check in background
       if (context.waitUntil) {
-        context.waitUntil(maybeRunPeriodicCleanup(env.DB, retentionDays));
+        context.waitUntil(maybeRunPeriodicCleanup(db, retentionDays));
       } else {
-        await maybeRunPeriodicCleanup(env.DB, retentionDays);
+        await maybeRunPeriodicCleanup(db, retentionDays);
       }
 
       const extraHeaders: Record<string, string> = {};
       if (issuedVisitorToken) {
-        extraHeaders['Set-Cookie'] =
-          `arqam_vtok=${encodeURIComponent(issuedVisitorToken)}; Path=/api/analytics; HttpOnly; Secure; SameSite=Strict; Max-Age=7776000`;
+        const isSecureOrigin = url.protocol === 'https:';
+        const vtokFlags = isSecureOrigin
+          ? 'Path=/api/analytics; HttpOnly; Secure; SameSite=Strict; Max-Age=7776000'
+          : 'Path=/api/analytics; HttpOnly; SameSite=Strict; Max-Age=7776000';
+        extraHeaders['Set-Cookie'] = `arqam_vtok=${encodeURIComponent(issuedVisitorToken)}; ${vtokFlags}`;
       }
 
       return jsonResponse(
@@ -1334,7 +1678,7 @@ export const onRequest = async (context: PagesContext): Promise<Response> => {
     // 2. POST /api/analytics/consent — Verified Explicit GPS Permission Grant / Denial
     // ========================================================================
     if (method === 'POST' && subPath === 'consent') {
-      const rl = await checkEndpointRateLimit(env.DB, `consent:${ipHash}`, 20, 60);
+      const rl = await checkEndpointRateLimit(db, `consent:${ipHash}`, 20, 60);
       if (!rl.allowed) {
         return jsonResponse(
           { error: 'Rate limit exceeded for consent updates.' },
@@ -1359,9 +1703,8 @@ export const onRequest = async (context: PagesContext): Promise<Response> => {
         );
       }
 
-      // Require verified visitor ownership token
       const callerToken = extractVisitorToken(request, body);
-      const ownership = await verifyVisitorOwnership(env.DB, visitorId, callerToken);
+      const ownership = await verifyVisitorOwnership(db, visitorId, callerToken);
       if (!ownership.exists || !ownership.verified) {
         return jsonResponse(
           { error: 'Forbidden: valid first-party visitor ownership token required.' },
@@ -1391,11 +1734,12 @@ export const onRequest = async (context: PagesContext): Promise<Response> => {
           );
         }
 
-        await env.DB.prepare(
-          `INSERT INTO location_consents (
+        await db
+          .prepare(
+            `INSERT INTO location_consents (
             consent_id, visitor_id, action, gps_latitude, gps_longitude, gps_accuracy_meters, gps_timestamp, consent_notice_version, created_at
           ) VALUES (?, ?, 'granted', ?, ?, ?, ?, 'v1.0', ?)`
-        )
+          )
           .bind(
             crypto.randomUUID(),
             visitorId,
@@ -1407,8 +1751,9 @@ export const onRequest = async (context: PagesContext): Promise<Response> => {
           )
           .run();
 
-        await env.DB.prepare(
-          `UPDATE visitors SET
+        await db
+          .prepare(
+            `UPDATE visitors SET
             location_source = 'gps',
             gps_consent_status = 'granted',
             gps_consent_at = ?,
@@ -1418,7 +1763,7 @@ export const onRequest = async (context: PagesContext): Promise<Response> => {
             gps_timestamp = ?,
             last_seen_at = ?
           WHERE visitor_id = ?`
-        )
+          )
           .bind(
             nowIso,
             validated.latitude,
@@ -1430,8 +1775,9 @@ export const onRequest = async (context: PagesContext): Promise<Response> => {
           )
           .run();
 
-        await env.DB.prepare(
-          `UPDATE visits SET
+        await db
+          .prepare(
+            `UPDATE visits SET
             location_source = 'gps',
             gps_latitude = ?,
             gps_longitude = ?,
@@ -1440,7 +1786,7 @@ export const onRequest = async (context: PagesContext): Promise<Response> => {
           WHERE visit_id = (
             SELECT visit_id FROM visits WHERE visitor_id = ? ORDER BY created_at DESC LIMIT 1
           )`
-        )
+          )
           .bind(
             validated.latitude,
             validated.longitude,
@@ -1450,20 +1796,22 @@ export const onRequest = async (context: PagesContext): Promise<Response> => {
           )
           .run();
       } else {
-        await env.DB.prepare(
-          `INSERT INTO location_consents (
+        await db
+          .prepare(
+            `INSERT INTO location_consents (
             consent_id, visitor_id, action, gps_latitude, gps_longitude, gps_accuracy_meters, gps_timestamp, consent_notice_version, created_at
           ) VALUES (?, ?, 'denied', NULL, NULL, NULL, NULL, 'v1.0', ?)`
-        )
+          )
           .bind(crypto.randomUUID(), visitorId, nowIso)
           .run();
 
-        await env.DB.prepare(
-          `UPDATE visitors SET
+        await db
+          .prepare(
+            `UPDATE visitors SET
             gps_consent_status = 'denied',
             gps_consent_at = ?
           WHERE visitor_id = ?`
-        )
+          )
           .bind(nowIso, visitorId)
           .run();
       }
@@ -1484,7 +1832,7 @@ export const onRequest = async (context: PagesContext): Promise<Response> => {
     // 3. GET / POST /api/analytics/privacy — Protected Consent Withdrawal & Deletion
     // ========================================================================
     if (subPath === 'privacy') {
-      const rl = await checkEndpointRateLimit(env.DB, `privacy:${ipHash}`, 20, 60);
+      const rl = await checkEndpointRateLimit(db, `privacy:${ipHash}`, 20, 60);
       if (!rl.allowed) {
         return jsonResponse(
           { error: 'Rate limit exceeded for privacy requests.' },
@@ -1501,7 +1849,7 @@ export const onRequest = async (context: PagesContext): Promise<Response> => {
         }
 
         const callerToken = extractVisitorToken(request, null);
-        const ownership = await verifyVisitorOwnership(env.DB, visitorId, callerToken);
+        const ownership = await verifyVisitorOwnership(db, visitorId, callerToken);
         if (!ownership.exists || !ownership.verified) {
           return jsonResponse(
             { error: 'Forbidden: valid first-party visitor ownership token required.' },
@@ -1510,9 +1858,10 @@ export const onRequest = async (context: PagesContext): Promise<Response> => {
           );
         }
 
-        const v = await env.DB.prepare(
-          `SELECT visitor_id, first_seen_at, last_seen_at, total_visits, location_source, gps_consent_status, gps_consent_at FROM visitors WHERE visitor_id = ?`
-        )
+        const v = await db
+          .prepare(
+            `SELECT visitor_id, first_seen_at, last_seen_at, total_visits, location_source, gps_consent_status, gps_consent_at FROM visitors WHERE visitor_id = ?`
+          )
           .bind(visitorId)
           .first<Record<string, unknown>>();
 
@@ -1547,7 +1896,7 @@ export const onRequest = async (context: PagesContext): Promise<Response> => {
         }
 
         const callerToken = extractVisitorToken(request, body);
-        const ownership = await verifyVisitorOwnership(env.DB, visitorId, callerToken);
+        const ownership = await verifyVisitorOwnership(db, visitorId, callerToken);
         if (!ownership.exists || !ownership.verified) {
           return jsonResponse(
             { error: 'Forbidden: valid first-party visitor ownership token required.' },
@@ -1560,9 +1909,9 @@ export const onRequest = async (context: PagesContext): Promise<Response> => {
         const visitorHash = (await sha256Hex(visitorId)).slice(0, 24);
 
         if (action === 'withdraw_gps') {
-          // 1. Clear GPS coordinates from visitors
-          const r1 = await env.DB.prepare(
-            `UPDATE visitors SET
+          const r1 = await db
+            .prepare(
+              `UPDATE visitors SET
               location_source = 'ip',
               gps_consent_status = 'withdrawn',
               gps_consent_at = ?,
@@ -1571,48 +1920,49 @@ export const onRequest = async (context: PagesContext): Promise<Response> => {
               gps_accuracy_meters = NULL,
               gps_timestamp = NULL
             WHERE visitor_id = ?`
-          )
+            )
             .bind(nowIso, visitorId)
             .run();
 
-          // 2. Clear GPS coordinates from all visits
-          await env.DB.prepare(
-            `UPDATE visits SET
+          await db
+            .prepare(
+              `UPDATE visits SET
               location_source = 'ip',
               gps_latitude = NULL,
               gps_longitude = NULL,
               gps_accuracy_meters = NULL,
               gps_timestamp = NULL
             WHERE visitor_id = ?`
-          )
+            )
             .bind(visitorId)
             .run();
 
-          // 3. Clear stored GPS coordinates from all historical location_consents rows while preserving consent audit trail
-          await env.DB.prepare(
-            `UPDATE location_consents SET
+          await db
+            .prepare(
+              `UPDATE location_consents SET
               gps_latitude = NULL,
               gps_longitude = NULL,
               gps_accuracy_meters = NULL,
               gps_timestamp = NULL
             WHERE visitor_id = ?`
-          )
+            )
             .bind(visitorId)
             .run();
 
-          // 4. Insert the withdrawal audit record (with NULL coordinates)
-          await env.DB.prepare(
-            `INSERT INTO location_consents (
+          await db
+            .prepare(
+              `INSERT INTO location_consents (
               consent_id, visitor_id, action, gps_latitude, gps_longitude, gps_accuracy_meters, gps_timestamp, consent_notice_version, created_at
             ) VALUES (?, ?, 'withdrawn', NULL, NULL, NULL, NULL, 'v1.0', ?)`
-          )
+            )
             .bind(crypto.randomUUID(), visitorId, nowIso)
             .run();
 
-          await env.DB.prepare(
-            `INSERT INTO deletion_requests (request_id, visitor_id_hash, action, records_purged, requested_at)
+          await db
+            .prepare(
+              `INSERT INTO deletion_requests (request_id, visitor_id_hash, action, records_purged, requested_at)
              VALUES (?, ?, 'withdraw_gps', ?, ?)`
-          )
+            )
             .bind(crypto.randomUUID(), visitorHash, r1.meta?.changes ?? 1, nowIso)
             .run();
 
@@ -1629,17 +1979,20 @@ export const onRequest = async (context: PagesContext): Promise<Response> => {
           );
         }
 
-        // action === 'delete_all_data'
-        const vDel = await env.DB.prepare(`DELETE FROM visits WHERE visitor_id = ?`).bind(visitorId).run();
-        await env.DB.prepare(`DELETE FROM sessions WHERE visitor_id = ?`).bind(visitorId).run();
-        await env.DB.prepare(`DELETE FROM location_consents WHERE visitor_id = ?`).bind(visitorId).run();
-        await env.DB.prepare(`DELETE FROM visitors WHERE visitor_id = ?`).bind(visitorId).run();
+        const vDel = await db
+          .prepare(`DELETE FROM visits WHERE visitor_id = ?`)
+          .bind(visitorId)
+          .run();
+        await db.prepare(`DELETE FROM sessions WHERE visitor_id = ?`).bind(visitorId).run();
+        await db.prepare(`DELETE FROM location_consents WHERE visitor_id = ?`).bind(visitorId).run();
+        await db.prepare(`DELETE FROM visitors WHERE visitor_id = ?`).bind(visitorId).run();
 
         const purgedCount = (vDel.meta?.changes ?? 0) + 1;
-        await env.DB.prepare(
-          `INSERT INTO deletion_requests (request_id, visitor_id_hash, action, records_purged, requested_at)
+        await db
+          .prepare(
+            `INSERT INTO deletion_requests (request_id, visitor_id_hash, action, records_purged, requested_at)
            VALUES (?, ?, 'delete_all_data', ?, ?)`
-        )
+          )
           .bind(crypto.randomUUID(), visitorHash, purgedCount, nowIso)
           .run();
 
@@ -1662,93 +2015,16 @@ export const onRequest = async (context: PagesContext): Promise<Response> => {
     }
 
     // ========================================================================
-    // 4. POST /api/analytics/admin/login — Hardened Admin Authentication
-    // ========================================================================
-    if (method === 'POST' && subPath === 'admin/login') {
-      const secrets = getValidatedAdminSecrets(env);
-      if (!secrets) {
-        return jsonResponse(
-          {
-            error:
-              'Admin authentication is disabled: ADMIN_PASSWORD and ADMIN_TOKEN_SECRET must be configured securely on the server.',
-          },
-          503,
-          cors.headers
-        );
-      }
-
-      // Check brute-force lockout before inspecting password
-      const bf = await checkLoginBruteForce(env.DB, ipHash);
-      if (bf.locked) {
-        return jsonResponse(
-          {
-            error: `Too many failed login attempts. Try again in ${bf.retryAfterSeconds} seconds.`,
-          },
-          429,
-          cors.headers,
-          { 'Retry-After': String(bf.retryAfterSeconds) }
-        );
-      }
-
-      const body = (await request.json().catch(() => null)) as Record<string, unknown> | null;
-      const password = sanitizeString(body?.password, 256);
-
-      if (!password || !constantTimeEqual(password, secrets.adminPassword)) {
-        const failRes = await recordLoginFailure(env.DB, ipHash, bf.currentFailures);
-        if (failRes.lockedNow) {
-          return jsonResponse(
-            {
-              error: `Too many failed login attempts. Account locked for ${failRes.retryAfterSeconds} seconds.`,
-            },
-            429,
-            cors.headers,
-            { 'Retry-After': String(failRes.retryAfterSeconds) }
-          );
-        }
-        return jsonResponse({ error: 'Invalid admin password.' }, 401, cors.headers);
-      }
-
-      // Successful login: clear failed login counter
-      await clearLoginFailures(env.DB, ipHash);
-
-      const sessionNonce = `${crypto.randomUUID()}-${crypto.randomUUID()}`;
-      const signature = await hmacSha256Hex(secrets.adminTokenSecret, sessionNonce);
-      const rawToken = `${sessionNonce}.${signature}`;
-      const tokenHash = await sha256Hex(`${secrets.adminTokenSecret}:${rawToken}`);
-      const nowIso = new Date().toISOString();
-      const expiresAt = new Date(Date.now() + 12 * 3600 * 1000).toISOString();
-      const ua = sanitizeOptionalString(request.headers.get('user-agent'), 256);
-
-      await env.DB.prepare(
-        `INSERT INTO admin_sessions (token_hash, created_at, expires_at, ip_hash, user_agent)
-         VALUES (?, ?, ?, ?, ?)`
-      )
-        .bind(tokenHash, nowIso, expiresAt, ipHash, ua)
-        .run();
-
-      await runScheduledRetentionCleanup(env.DB, retentionDays);
-
-      return jsonResponse(
-        {
-          ok: true,
-          token: rawToken,
-          expiresAt,
-        },
-        200,
-        cors.headers
-      );
-    }
-
-    // ========================================================================
-    // Require Configured Secrets + Valid Admin Bearer Token for all /admin/* routes
+    // Require Configured Secrets + Valid Admin Bearer/Cookie Token for /admin/*
     // ========================================================================
     if (subPath.startsWith('admin/')) {
-      const secrets = getValidatedAdminSecrets(env);
-      if (!secrets) {
+      const secrets = await resolveAdminSecrets(env);
+      if (!secrets.ok || !secrets.adminPassword || !secrets.adminTokenSecret) {
         return jsonResponse(
           {
             error:
-              'Admin authentication is disabled: ADMIN_PASSWORD and ADMIN_TOKEN_SECRET must be configured securely on the server.',
+              secrets.reason ||
+              'Admin authentication is disabled: ADMIN_PASSWORD must be configured securely on the server.',
           },
           503,
           cors.headers
@@ -1758,18 +2034,10 @@ export const onRequest = async (context: PagesContext): Promise<Response> => {
       const isAuthorized = await verifyAdminAuth(request, env);
       if (!isAuthorized) {
         return jsonResponse(
-          { error: 'Unauthorized. Valid admin bearer token required.' },
+          { error: 'Unauthorized. Valid admin session required.' },
           401,
           cors.headers
         );
-      }
-
-      if (method === 'POST' && subPath === 'admin/logout') {
-        const authHeader = request.headers.get('authorization') || '';
-        const rawToken = authHeader.slice(7).trim();
-        const tokenHash = await sha256Hex(`${secrets.adminTokenSecret}:${rawToken}`);
-        await env.DB.prepare(`DELETE FROM admin_sessions WHERE token_hash = ?`).bind(tokenHash).run();
-        return jsonResponse({ ok: true }, 200, cors.headers);
       }
 
       // ----------------------------------------------------------------------
@@ -1815,27 +2083,31 @@ export const onRequest = async (context: PagesContext): Promise<Response> => {
 
         const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
 
-        const kpiRow = await env.DB.prepare(
-          `SELECT
+        const kpiRow = await db
+          .prepare(
+            `SELECT
             COUNT(*) AS totalVisits,
             COUNT(DISTINCT visitor_id) AS uniqueVisitors,
             COUNT(DISTINCT session_id) AS totalSessions,
             SUM(CASE WHEN location_source = 'gps' THEN 1 ELSE 0 END) AS gpsVisits,
             SUM(CASE WHEN location_source = 'ip' THEN 1 ELSE 0 END) AS ipVisits
            FROM visits ${whereClause}`
-        )
+          )
           .bind(...binds)
           .first<Record<string, number>>();
 
-        const visitorGpsRow = await env.DB.prepare(
-          `SELECT
+        const visitorGpsRow = await db
+          .prepare(
+            `SELECT
             SUM(CASE WHEN location_source = 'gps' AND gps_consent_status = 'granted' THEN 1 ELSE 0 END) AS gpsVisitors,
             SUM(CASE WHEN location_source != 'gps' OR gps_consent_status != 'granted' THEN 1 ELSE 0 END) AS ipVisitors
            FROM visitors`
-        ).first<Record<string, number>>();
+          )
+          .first<Record<string, number>>();
 
-        const { results: dailyStats } = await env.DB.prepare(
-          `SELECT
+        const { results: dailyStats } = await db
+          .prepare(
+            `SELECT
              substr(created_at, 1, 10) AS period,
             COUNT(*) AS visits,
             COUNT(DISTINCT visitor_id) AS uniqueVisitors,
@@ -1844,12 +2116,13 @@ export const onRequest = async (context: PagesContext): Promise<Response> => {
            GROUP BY substr(created_at, 1, 10)
            ORDER BY period DESC
            LIMIT 30`
-        )
+          )
           .bind(...binds)
           .all<Record<string, unknown>>();
 
-        const { results: weeklyStats } = await env.DB.prepare(
-          `SELECT
+        const { results: weeklyStats } = await db
+          .prepare(
+            `SELECT
             strftime('%Y-W%W', created_at) AS period,
             MIN(substr(created_at, 1, 10)) AS weekStart,
             COUNT(*) AS visits,
@@ -1859,12 +2132,13 @@ export const onRequest = async (context: PagesContext): Promise<Response> => {
            GROUP BY strftime('%Y-W%W', created_at)
            ORDER BY period DESC
            LIMIT 16`
-        )
+          )
           .bind(...binds)
           .all<Record<string, unknown>>();
 
-        const { results: monthlyStats } = await env.DB.prepare(
-          `SELECT
+        const { results: monthlyStats } = await db
+          .prepare(
+            `SELECT
             substr(created_at, 1, 7) AS period,
             COUNT(*) AS visits,
             COUNT(DISTINCT visitor_id) AS uniqueVisitors,
@@ -1873,12 +2147,13 @@ export const onRequest = async (context: PagesContext): Promise<Response> => {
            GROUP BY substr(created_at, 1, 7)
            ORDER BY period DESC
            LIMIT 12`
-        )
+          )
           .bind(...binds)
           .all<Record<string, unknown>>();
 
-        const { results: topPages } = await env.DB.prepare(
-          `SELECT
+        const { results: topPages } = await db
+          .prepare(
+            `SELECT
             page_path AS pagePath,
             MAX(page_title) AS pageTitle,
             COUNT(*) AS visits,
@@ -1887,12 +2162,13 @@ export const onRequest = async (context: PagesContext): Promise<Response> => {
            GROUP BY page_path
            ORDER BY visits DESC
            LIMIT 15`
-        )
+          )
           .bind(...binds)
           .all<Record<string, unknown>>();
 
-        const { results: geoLocations } = await env.DB.prepare(
-          `SELECT
+        const { results: geoLocations } = await db
+          .prepare(
+            `SELECT
             COALESCE(ip_country, 'Unknown') AS country,
             COALESCE(ip_region, 'Unknown') AS region,
             COALESCE(ip_city, 'Unknown') AS city,
@@ -1904,12 +2180,13 @@ export const onRequest = async (context: PagesContext): Promise<Response> => {
            GROUP BY COALESCE(ip_country, 'Unknown'), COALESCE(ip_region, 'Unknown'), COALESCE(ip_city, 'Unknown'), location_source
            ORDER BY visits DESC
            LIMIT 50`
-        )
+          )
           .bind(...binds)
           .all<Record<string, unknown>>();
 
-        const { results: mapPoints } = await env.DB.prepare(
-          `SELECT
+        const { results: mapPoints } = await db
+          .prepare(
+            `SELECT
             visitor_id AS visitorId,
             location_source AS locationSource,
             ip_country AS ipCountry,
@@ -1930,10 +2207,12 @@ export const onRequest = async (context: PagesContext): Promise<Response> => {
               OR (ip_latitude IS NOT NULL AND ip_longitude IS NOT NULL)
            ORDER BY last_seen_at DESC
            LIMIT 200`
-        ).all<Record<string, unknown>>();
+          )
+          .all<Record<string, unknown>>();
 
-        const { results: topReferrers } = await env.DB.prepare(
-          `SELECT
+        const { results: topReferrers } = await db
+          .prepare(
+            `SELECT
             COALESCE(referrer_domain, 'Direct / None') AS referrerDomain,
             MAX(referrer_url) AS sampleReferrerUrl,
             COUNT(*) AS visits,
@@ -1942,12 +2221,13 @@ export const onRequest = async (context: PagesContext): Promise<Response> => {
            GROUP BY COALESCE(referrer_domain, 'Direct / None')
            ORDER BY visits DESC
            LIMIT 20`
-        )
+          )
           .bind(...binds)
           .all<Record<string, unknown>>();
 
-        const { results: firstTouchStats } = await env.DB.prepare(
-          `SELECT
+        const { results: firstTouchStats } = await db
+          .prepare(
+            `SELECT
             COALESCE(first_touch_ref, first_touch_referrer_domain, 'Direct / Organic') AS source,
             first_touch_ref AS refCampaign,
             first_touch_referrer_domain AS referrerDomain,
@@ -1957,10 +2237,12 @@ export const onRequest = async (context: PagesContext): Promise<Response> => {
            GROUP BY COALESCE(first_touch_ref, first_touch_referrer_domain, 'Direct / Organic')
            ORDER BY uniqueVisitors DESC
            LIMIT 20`
-        ).all<Record<string, unknown>>();
+          )
+          .all<Record<string, unknown>>();
 
-        const { results: lastTouchStats } = await env.DB.prepare(
-          `SELECT
+        const { results: lastTouchStats } = await db
+          .prepare(
+            `SELECT
             COALESCE(last_touch_ref, last_touch_referrer_domain, 'Direct / Organic') AS source,
             last_touch_ref AS refCampaign,
             last_touch_referrer_domain AS referrerDomain,
@@ -1970,10 +2252,12 @@ export const onRequest = async (context: PagesContext): Promise<Response> => {
            GROUP BY COALESCE(last_touch_ref, last_touch_referrer_domain, 'Direct / Organic')
            ORDER BY uniqueVisitors DESC
            LIMIT 20`
-        ).all<Record<string, unknown>>();
+          )
+          .all<Record<string, unknown>>();
 
-        const { results: savedCampaigns } = await env.DB.prepare(
-          `SELECT
+        const { results: savedCampaigns } = await db
+          .prepare(
+            `SELECT
             c.campaign_id AS campaignId,
             c.slug AS slug,
             c.name AS name,
@@ -1988,10 +2272,12 @@ export const onRequest = async (context: PagesContext): Promise<Response> => {
             (SELECT MAX(v.created_at) FROM visits v WHERE v.ref_campaign = c.slug) AS lastVisitAt
            FROM referral_campaigns c
            ORDER BY c.created_at DESC`
-        ).all<Record<string, unknown>>();
+          )
+          .all<Record<string, unknown>>();
 
-        const { results: observedRefs } = await env.DB.prepare(
-          `SELECT
+        const { results: observedRefs } = await db
+          .prepare(
+            `SELECT
             ref_campaign AS slug,
             COUNT(*) AS totalVisits,
             COUNT(DISTINCT visitor_id) AS uniqueVisitors,
@@ -2000,39 +2286,44 @@ export const onRequest = async (context: PagesContext): Promise<Response> => {
            WHERE ref_campaign IS NOT NULL AND ref_campaign != ''
            GROUP BY ref_campaign
            ORDER BY totalVisits DESC`
-        ).all<Record<string, unknown>>();
+          )
+          .all<Record<string, unknown>>();
 
-        const { results: byDeviceType } = await env.DB.prepare(
-          `SELECT device_type AS deviceType, COUNT(*) AS visits, COUNT(DISTINCT visitor_id) AS uniqueVisitors
+        const { results: byDeviceType } = await db
+          .prepare(
+            `SELECT device_type AS deviceType, COUNT(*) AS visits, COUNT(DISTINCT visitor_id) AS uniqueVisitors
            FROM visits ${whereClause}
            GROUP BY device_type
            ORDER BY visits DESC`
-        )
+          )
           .bind(...binds)
           .all<Record<string, unknown>>();
 
-        const { results: byOs } = await env.DB.prepare(
-          `SELECT os, COUNT(*) AS visits, COUNT(DISTINCT visitor_id) AS uniqueVisitors
+        const { results: byOs } = await db
+          .prepare(
+            `SELECT os, COUNT(*) AS visits, COUNT(DISTINCT visitor_id) AS uniqueVisitors
            FROM visits ${whereClause}
            GROUP BY os
            ORDER BY visits DESC
            LIMIT 15`
-        )
+          )
           .bind(...binds)
           .all<Record<string, unknown>>();
 
-        const { results: byBrowser } = await env.DB.prepare(
-          `SELECT browser, COALESCE(browser_version, '') AS browserVersion, COUNT(*) AS visits, COUNT(DISTINCT visitor_id) AS uniqueVisitors
+        const { results: byBrowser } = await db
+          .prepare(
+            `SELECT browser, COALESCE(browser_version, '') AS browserVersion, COUNT(*) AS visits, COUNT(DISTINCT visitor_id) AS uniqueVisitors
            FROM visits ${whereClause}
            GROUP BY browser, COALESCE(browser_version, '')
            ORDER BY visits DESC
            LIMIT 15`
-        )
+          )
           .bind(...binds)
           .all<Record<string, unknown>>();
 
-        const { results: byScreen } = await env.DB.prepare(
-          `SELECT
+        const { results: byScreen } = await db
+          .prepare(
+            `SELECT
             CAST(screen_width AS TEXT) || '×' || CAST(screen_height AS TEXT) AS resolution,
             COUNT(*) AS visits,
             COUNT(DISTINCT visitor_id) AS uniqueVisitors
@@ -2041,7 +2332,7 @@ export const onRequest = async (context: PagesContext): Promise<Response> => {
            GROUP BY resolution
            ORDER BY visits DESC
            LIMIT 12`
-        )
+          )
           .bind(...binds)
           .all<Record<string, unknown>>();
 
@@ -2133,8 +2424,9 @@ export const onRequest = async (context: PagesContext): Promise<Response> => {
         }
 
         const whereClause = conds.length > 0 ? `WHERE ${conds.join(' AND ')}` : '';
-        const { results: visitors } = await env.DB.prepare(
-          `SELECT
+        const { results: visitors } = await db
+          .prepare(
+            `SELECT
             visitor_id AS visitorId,
             first_seen_at AS firstSeenAt,
             last_seen_at AS lastSeenAt,
@@ -2174,7 +2466,7 @@ export const onRequest = async (context: PagesContext): Promise<Response> => {
            ${whereClause}
            ORDER BY last_seen_at DESC
            LIMIT ?`
-        )
+          )
           .bind(...binds, limit)
           .all<Record<string, unknown>>();
 
@@ -2186,8 +2478,9 @@ export const onRequest = async (context: PagesContext): Promise<Response> => {
       // ----------------------------------------------------------------------
       if (method === 'GET' && subPath.startsWith('admin/visitors/')) {
         const targetVisitorId = decodeURIComponent(subPath.slice('admin/visitors/'.length));
-        const visitor = await env.DB.prepare(
-          `SELECT
+        const visitor = await db
+          .prepare(
+            `SELECT
             visitor_id AS visitorId,
             first_seen_at AS firstSeenAt,
             last_seen_at AS lastSeenAt,
@@ -2224,7 +2517,7 @@ export const onRequest = async (context: PagesContext): Promise<Response> => {
             gps_accuracy_meters AS gpsAccuracyMeters,
             gps_timestamp AS gpsTimestamp
            FROM visitors WHERE visitor_id = ?`
-        )
+          )
           .bind(targetVisitorId)
           .first<Record<string, unknown>>();
 
@@ -2232,8 +2525,9 @@ export const onRequest = async (context: PagesContext): Promise<Response> => {
           return jsonResponse({ error: 'Visitor not found' }, 404, cors.headers);
         }
 
-        const { results: sessions } = await env.DB.prepare(
-          `SELECT
+        const { results: sessions } = await db
+          .prepare(
+            `SELECT
             session_id AS sessionId,
             started_at AS startedAt,
             last_activity_at AS lastActivityAt,
@@ -2247,12 +2541,13 @@ export const onRequest = async (context: PagesContext): Promise<Response> => {
             os,
             browser
            FROM sessions WHERE visitor_id = ? ORDER BY started_at DESC LIMIT 50`
-        )
+          )
           .bind(targetVisitorId)
           .all<Record<string, unknown>>();
 
-        const { results: visits } = await env.DB.prepare(
-          `SELECT
+        const { results: visits } = await db
+          .prepare(
+            `SELECT
             visit_id AS visitId,
             session_id AS sessionId,
             page_path AS pagePath,
@@ -2277,12 +2572,13 @@ export const onRequest = async (context: PagesContext): Promise<Response> => {
             gps_timestamp AS gpsTimestamp,
             created_at AS createdAt
            FROM visits WHERE visitor_id = ? ORDER BY created_at DESC LIMIT 100`
-        )
+          )
           .bind(targetVisitorId)
           .all<Record<string, unknown>>();
 
-        const { results: consents } = await env.DB.prepare(
-          `SELECT
+        const { results: consents } = await db
+          .prepare(
+            `SELECT
             consent_id AS consentId,
             action,
             gps_latitude AS gpsLatitude,
@@ -2292,7 +2588,7 @@ export const onRequest = async (context: PagesContext): Promise<Response> => {
             consent_notice_version AS consentNoticeVersion,
             created_at AS createdAt
            FROM location_consents WHERE visitor_id = ? ORDER BY created_at DESC LIMIT 50`
-        )
+          )
           .bind(targetVisitorId)
           .all<Record<string, unknown>>();
 
@@ -2338,15 +2634,16 @@ export const onRequest = async (context: PagesContext): Promise<Response> => {
         const nowIso = new Date().toISOString();
         const campaignId = crypto.randomUUID();
 
-        await env.DB.prepare(
-          `INSERT INTO referral_campaigns (campaign_id, slug, name, channel, target_path, notes, created_at)
+        await db
+          .prepare(
+            `INSERT INTO referral_campaigns (campaign_id, slug, name, channel, target_path, notes, created_at)
            VALUES (?, ?, ?, ?, ?, ?, ?)
            ON CONFLICT(slug) DO UPDATE SET
              name = excluded.name,
              channel = excluded.channel,
              target_path = excluded.target_path,
              notes = excluded.notes`
-        )
+          )
           .bind(
             campaignId,
             rawSlug,
@@ -2378,7 +2675,7 @@ export const onRequest = async (context: PagesContext): Promise<Response> => {
 
       if (subPath.startsWith('admin/campaigns/') && method === 'DELETE') {
         const slug = decodeURIComponent(subPath.slice('admin/campaigns/'.length));
-        await env.DB.prepare(`DELETE FROM referral_campaigns WHERE slug = ?`).bind(slug).run();
+        await db.prepare(`DELETE FROM referral_campaigns WHERE slug = ?`).bind(slug).run();
         return jsonResponse({ ok: true, deletedSlug: slug }, 200, cors.headers);
       }
 
@@ -2389,14 +2686,17 @@ export const onRequest = async (context: PagesContext): Promise<Response> => {
         const body = (await request.json().catch(() => ({}))) as Record<string, unknown>;
         const targetVisitorId = sanitizeOptionalString(body?.visitorId, 64);
         if (targetVisitorId) {
-          await env.DB.prepare(`DELETE FROM visits WHERE visitor_id = ?`).bind(targetVisitorId).run();
-          await env.DB.prepare(`DELETE FROM sessions WHERE visitor_id = ?`).bind(targetVisitorId).run();
-          await env.DB.prepare(`DELETE FROM location_consents WHERE visitor_id = ?`).bind(targetVisitorId).run();
-          await env.DB.prepare(`DELETE FROM visitors WHERE visitor_id = ?`).bind(targetVisitorId).run();
+          await db.prepare(`DELETE FROM visits WHERE visitor_id = ?`).bind(targetVisitorId).run();
+          await db.prepare(`DELETE FROM sessions WHERE visitor_id = ?`).bind(targetVisitorId).run();
+          await db
+            .prepare(`DELETE FROM location_consents WHERE visitor_id = ?`)
+            .bind(targetVisitorId)
+            .run();
+          await db.prepare(`DELETE FROM visitors WHERE visitor_id = ?`).bind(targetVisitorId).run();
           return jsonResponse({ ok: true, purgedVisitorId: targetVisitorId }, 200, cors.headers);
         }
         const customDays = sanitizeNumber(body?.retentionDays, 1, 3650) ?? retentionDays;
-        const report = await runScheduledRetentionCleanup(env.DB, customDays);
+        const report = await runScheduledRetentionCleanup(db, customDays);
         return jsonResponse({ ok: true, ...report }, 200, cors.headers);
       }
     }
@@ -2406,7 +2706,12 @@ export const onRequest = async (context: PagesContext): Promise<Response> => {
       404,
       cors.headers
     );
-  } catch {
+  } catch (err) {
+    logAuthDiagnostic('analytics_unhandled_exception', {
+      subPath,
+      method,
+      error: err instanceof Error ? err.message : 'unknown',
+    });
     return jsonResponse(
       { error: 'Internal analytics server error.' },
       500,

@@ -8,6 +8,19 @@
   X-Frame-Options: DENY
   Referrer-Policy: strict-origin-when-cross-origin
 
+# Admin routes — strictly excluded from search indexing and caching
+/admin
+  X-Robots-Tag: noindex, nofollow, noarchive
+  Cache-Control: no-store, no-cache, must-revalidate
+  X-Content-Type-Options: nosniff
+  X-Frame-Options: DENY
+
+/admin/*
+  X-Robots-Tag: noindex, nofollow, noarchive
+  Cache-Control: no-store, no-cache, must-revalidate
+  X-Content-Type-Options: nosniff
+  X-Frame-Options: DENY
+
 # Markdown agent index (acceptmarkdown.com standard)
 /llms.txt
   Content-Type: text/markdown; charset=utf-8
@@ -38,6 +51,7 @@
   Access-Control-Allow-Headers: Content-Type, Authorization, X-Visitor-Token
   Access-Control-Allow-Credentials: true
   Vary: Origin
+  X-Robots-Tag: noindex, nofollow
   X-Content-Type-Options: nosniff
   X-Frame-Options: DENY
   Referrer-Policy: strict-origin-when-cross-origin

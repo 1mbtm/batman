@@ -13,8 +13,7 @@ import { trackPageVisit } from './utils/analyticsTracker';
 function checkIsAdminRoute(): boolean {
   if (typeof window === 'undefined') return false;
   const path = window.location.pathname.replace(/\/$/, '');
-  const hash = window.location.hash;
-  return path === '/admin' || hash === '#admin' || hash.startsWith('#/admin');
+  return path === '/admin' || path.startsWith('/admin/');
 }
 
 export function App() {
@@ -43,31 +42,8 @@ export function App() {
     };
   }, []);
 
-  const handleOpenAdmin = () => {
-    setIsPrivacyModalOpen(false);
-    setIsAdminRoute(true);
-    try {
-      if (window.location.protocol.startsWith('http')) {
-        window.history.pushState(null, '', '/admin');
-      }
-    } catch {
-      // Ignore history errors on non-http origins
-    }
-  };
-
-  const handleExitAdmin = () => {
-    setIsAdminRoute(false);
-    try {
-      if (window.location.protocol.startsWith('http')) {
-        window.history.pushState(null, '', '/');
-      }
-    } catch {
-      // Ignore
-    }
-  };
-
   if (isAdminRoute) {
-    return <AdminDashboard onExitAdmin={handleExitAdmin} />;
+    return <AdminDashboard />;
   }
 
   return (
@@ -132,7 +108,6 @@ export function App() {
       <AnalyticsConsentBanner
         isOpenModal={isPrivacyModalOpen}
         onCloseModal={() => setIsPrivacyModalOpen(false)}
-        onOpenAdmin={handleOpenAdmin}
       />
 
       {/* AMBIENT AUDIO PLAYER (Auto-plays on first scroll/touch) */}
