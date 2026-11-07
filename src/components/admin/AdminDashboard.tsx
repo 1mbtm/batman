@@ -278,6 +278,39 @@ export const AdminDashboard: FC<AdminDashboardProps> = ({ onExitAdmin }) => {
   const fetchDashboardData = useCallback(async () => {
     if (!token) return;
     setIsLoadingData(true);
+
+    const emptyOverview: OverviewPayload = {
+      kpis: {
+        totalVisits: 0,
+        uniqueVisitors: 0,
+        totalSessions: 0,
+        avgPagesPerSession: 0,
+        gpsVisits: 0,
+        ipVisits: 0,
+        gpsVisitors: 0,
+        ipVisitors: 0,
+        retentionDays: 0,
+      },
+      dailyStats: [],
+      weeklyStats: [],
+      monthlyStats: [],
+      topPages: [],
+      geographic: { locations: [], mapPoints: [] },
+      referrals: {
+        topReferrers: [],
+        firstTouchAttribution: [],
+        lastTouchAttribution: [],
+        campaigns: [],
+        observedRefs: [],
+      },
+      devices: {
+        byDeviceType: [],
+        byOs: [],
+        byBrowser: [],
+        byScreen: [],
+      },
+    };
+
     try {
       const params = new URLSearchParams();
       params.set('range', rangeFilter);
@@ -295,36 +328,6 @@ export const AdminDashboard: FC<AdminDashboardProps> = ({ onExitAdmin }) => {
         fetch(`/api/analytics/admin/overview?${params.toString()}`, { headers, credentials: 'same-origin' }),
         fetch(`/api/analytics/admin/visitors?${vParams.toString()}`, { headers, credentials: 'same-origin' }),
       ]);
-
-      const emptyOverview: OverviewPayload = {
-        kpis: {
-          totalVisits: 0,
-          uniqueVisitors: 0,
-          totalSessions: 0,
-          firstVisitAt: null,
-          lastVisitAt: null,
-          gpsVerifiedVisitors: 0,
-          ipEstimatedVisitors: 0,
-        },
-        dailyStats: [],
-        weeklyStats: [],
-        monthlyStats: [],
-        topPages: [],
-        geographic: { locations: [], mapPoints: [] },
-        referrals: {
-          topReferrers: [],
-          firstTouchAttribution: [],
-          lastTouchAttribution: [],
-          campaigns: [],
-          observedRefs: [],
-        },
-        devices: {
-          byDeviceType: [],
-          byOs: [],
-          byBrowser: [],
-          byScreen: [],
-        },
-      };
 
       if ((ovRes.status === 401 || visRes.status === 401) && !token.startsWith('local-admin-')) {
         setToken(null);
@@ -351,37 +354,7 @@ export const AdminDashboard: FC<AdminDashboardProps> = ({ onExitAdmin }) => {
         setVisitors(visData?.visitors || []);
       }
     } catch {
-      setOverview((prev) =>
-        prev || {
-          kpis: {
-            totalVisits: 0,
-            uniqueVisitors: 0,
-            totalSessions: 0,
-            firstVisitAt: null,
-            lastVisitAt: null,
-            gpsVerifiedVisitors: 0,
-            ipEstimatedVisitors: 0,
-          },
-          dailyStats: [],
-          weeklyStats: [],
-          monthlyStats: [],
-          topPages: [],
-          geographic: { locations: [], mapPoints: [] },
-          referrals: {
-            topReferrers: [],
-            firstTouchAttribution: [],
-            lastTouchAttribution: [],
-            campaigns: [],
-            observedRefs: [],
-          },
-          devices: {
-            byDeviceType: [],
-            byOs: [],
-            byBrowser: [],
-            byScreen: [],
-          },
-        }
-      );
+      setOverview((prev) => prev || emptyOverview);
     } finally {
       setIsLoadingData(false);
     }
@@ -440,7 +413,7 @@ export const AdminDashboard: FC<AdminDashboardProps> = ({ onExitAdmin }) => {
         } catch {
           // Ignore
         }
-      } else if (passwordInput === HARDCODED_ADMIN_PASSWORD && res.status !== 429) {
+      } else if ((passwordInput === HARDCODED_ADMIN_PASSWORD || passwordInput.trim() === HARDCODED_ADMIN_PASSWORD) && res.status !== 429) {
         const fallbackToken = `local-admin-${Date.now()}`;
         setToken(fallbackToken);
         setPasswordInput('');
@@ -455,7 +428,7 @@ export const AdminDashboard: FC<AdminDashboardProps> = ({ onExitAdmin }) => {
         setAuthError('Incorrect admin password.');
       }
     } catch {
-      if (passwordInput === HARDCODED_ADMIN_PASSWORD) {
+      if ((passwordInput === HARDCODED_ADMIN_PASSWORD || passwordInput.trim() === HARDCODED_ADMIN_PASSWORD)) {
         const fallbackToken = `local-admin-${Date.now()}`;
         setToken(fallbackToken);
         setPasswordInput('');
