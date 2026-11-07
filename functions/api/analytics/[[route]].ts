@@ -2,7 +2,6 @@
  * Cloudflare Pages Functions — Portfolio Visitor Analytics & Admin API (Security Hardened)
  * Route: /api/analytics/*
  * Database Binding: env.DB (Cloudflare D1 SQLite)
- * Last updated: 2026-11-07
  */
 
 export interface D1PreparedStatement {
