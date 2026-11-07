@@ -5,7 +5,6 @@ compatibility_date = "2025-01-01"
 [vars]
 ANALYTICS_RETENTION_DAYS = "90"
 ALLOWED_ORIGIN = "https://batman-7y3.pages.dev"
-ADMIN_PASSWORD = "Arkan\\gel17"
 
 # ============================================================================
 # Cloudflare D1 Database Binding Setup (Optional for Persistent Cloud Storage)

@@ -32,8 +32,8 @@ export const onRequest: PagesFunction<Env> = async (context) => {
     }
   }
 
-  // 2. API Routes handling (/api/*)
-  if (url.pathname.startsWith('/api/')) {
+  // 2. API Routes handling (/api/* except dynamic /api/analytics/*)
+  if (url.pathname.startsWith('/api/') && !url.pathname.startsWith('/api/analytics')) {
     // Check if matching static JSON endpoint exists in /api/v1/
     let apiAssetUrl = url.pathname;
     if (!apiAssetUrl.endsWith('.json')) {

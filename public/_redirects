@@ -1,5 +1,4 @@
 # Known SPA & Static Trust-Anchor Paths
-/                 /index.html   200
 /admin            /index.html   200
 /admin/*          /index.html   200
 /about            /about/index.html   200
@@ -14,9 +13,3 @@
 /api/v1/projects  /api/v1/projects.json  200
 /api/v1/services  /api/v1/services.json  200
 /api/v1/contact   /api/v1/contact.json   200
-
-# Unknown v1 static API catch-all (scoped to /api/v1/* so /api/analytics/* is never intercepted)
-/api/v1/*         /error.json   404
-
-# Catch-all: real HTTP 404 with markdown recovery body for unknown web paths
-/*                /404.html   404

@@ -59,14 +59,19 @@ export interface RetentionCleanupReport {
 const UUID_V4_REGEX =
   /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
-// Ephemeral per-isolate random fallback salt used ONLY for non-reversible daily IP hashing when ADMIN_TOKEN_SECRET is unset
-const EPHEMERAL_ISOLATE_SALT = (() => {
-  const buf = new Uint8Array(32);
-  crypto.getRandomValues(buf);
-  return Array.from(buf)
-    .map((b) => b.toString(16).padStart(2, '0'))
-    .join('');
-})();
+// Ephemeral per-isolate random fallback salt used ONLY for non-reversible daily IP hashing when ADMIN_TOKEN_SECRET is unset.
+// Lazily initialized on first use inside a handler (crypto.getRandomValues is disallowed at global scope in CF Workers).
+let _ephemeralIsolateSalt: string | null = null;
+function getEphemeralIsolateSalt(): string {
+  if (_ephemeralIsolateSalt === null) {
+    const buf = new Uint8Array(32);
+    crypto.getRandomValues(buf);
+    _ephemeralIsolateSalt = Array.from(buf)
+      .map((b) => b.toString(16).padStart(2, '0'))
+      .join('');
+  }
+  return _ephemeralIsolateSalt;
+}
 
 // In-memory brute-force & session revocation fallback when D1 is not bound or migrating
 const memoryRevokedTokens = new Set<string>();
@@ -393,7 +398,7 @@ async function computeSaltedIpHash(request: Request, env: Env): Promise<string> 
   const secret =
     typeof env.ADMIN_TOKEN_SECRET === 'string' && env.ADMIN_TOKEN_SECRET.trim().length >= 16
       ? env.ADMIN_TOKEN_SECRET.trim()
-      : EPHEMERAL_ISOLATE_SALT;
+      : getEphemeralIsolateSalt();
   const fullHash = await sha256Hex(`${secret}:${daySalt}:${rawIp}`);
   return fullHash.slice(0, 24);
 }
